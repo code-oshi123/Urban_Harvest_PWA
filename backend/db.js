@@ -14,4 +14,10 @@ const pool = mysql.createPool({
     queueLimit: 0
 });
 
-export default pool; 
+export async function initDB() {
+    const connection = await pool.getConnection();
+    console.log('Database connection established successfully.');
+    connection.release();
+}
+
+export default pool;
