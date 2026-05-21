@@ -7,7 +7,7 @@ import SearchFilter from './components/SearchFilter';
 import OfflineToast from './components/OfflineToast';
 import './App.css';
 
-const API_URL = 'https://urbanharvestpwa-production-260d.up.railway.app/';
+const API_URL = 'https://thriving-light-production-dcf8.up.railway.app/';
 
 function App() {
   const [events, setEvents] = useState([]);
