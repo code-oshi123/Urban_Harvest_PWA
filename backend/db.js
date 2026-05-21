@@ -2,7 +2,7 @@ import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 dotenv.config();
 
-// Railway provides these variable names automatically
+// Railway provides these variable names automatically 
 const pool = mysql.createPool({
     host: process.env.MYSQLHOST || process.env.DB_HOST,
     port: process.env.MYSQLPORT || 3306,
