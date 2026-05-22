@@ -81,3 +81,4 @@ export async function initDB() {
     }
 }
 
+export default pool; 
