@@ -9,7 +9,7 @@ import './App.css';
 
 // const API_URL = 'http://localhost:5000/api';
 
-const API_URL = 'https://urban-harvest-pwa-backend.onrender.com/api';
+const API_URL = 'https://urban-harvest-pwa-backend.onrender.com';
 
 function App() {
   const [events, setEvents] = useState([]);
