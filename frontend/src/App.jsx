@@ -7,9 +7,8 @@ import SearchFilter from './components/SearchFilter';
 import OfflineToast from './components/OfflineToast';
 import './App.css';
 
-// const API_URL = 'http://localhost:5000/api';
-
-const API_URL = 'https://urban-harvest-pwa-backend.onrender.com';
+// ✅ FIXED: Use local backend (no trailing slash)
+const API_URL = 'https://urban-harvest-pwa-backend.onrender.com/api';
 
 function App() {
   const [events, setEvents] = useState([]);
@@ -29,17 +28,23 @@ function App() {
   }, [darkMode]);
 
   const fetchEvents = async () => {
+    setLoading(true);
     try {
+      // ✅ FIXED: Proper URL construction
       const res = await axios.get(`${API_URL}/events`);
+      console.log('Events loaded:', res.data.data.length);
       setEvents(res.data.data);
       setFilteredEvents(res.data.data);
     } catch (err) {
       console.error('Fetch error:', err);
-      const cached = await caches.match(`${API_URL}/events`);
-      if (cached) {
-        const data = await cached.json();
-        setEvents(data.data);
-        setFilteredEvents(data.data);
+      // Try to get from cache if offline
+      if (caches) {
+        const cached = await caches.match(`${API_URL}/events`);
+        if (cached) {
+          const data = await cached.json();
+          setEvents(data.data);
+          setFilteredEvents(data.data);
+        }
       }
     } finally {
       setLoading(false);
@@ -60,7 +65,7 @@ function App() {
   const getLocation = () => {
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(pos => {
-        alert(`Near you: Lat ${pos.coords.latitude}, Lng ${pos.coords.longitude}`);
+        alert(`📍 Near you: Lat ${pos.coords.latitude}, Lng ${pos.coords.longitude}`);
       });
     }
   };
