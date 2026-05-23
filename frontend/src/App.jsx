@@ -7,7 +7,9 @@ import SearchFilter from './components/SearchFilter';
 import OfflineToast from './components/OfflineToast';
 import './App.css';
 
-const API_URL = 'https://thriving-light-production-dcf8.up.railway.app/';
+// const API_URL = 'http://localhost:5000/api';
+
+const API_URL = 'https://urban-harvest-pwa-backend.onrender.com/api';
 
 function App() {
   const [events, setEvents] = useState([]);

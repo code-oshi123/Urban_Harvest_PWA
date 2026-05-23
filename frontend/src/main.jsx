@@ -3,11 +3,16 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './App.css';
 
+// Register service worker
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
-      .then(reg => console.log('SW registered:', reg))
-      .catch(err => console.log('SW failed:', err));
+      .then(registration => {
+        console.log('SW registered: ', registration);
+      })
+      .catch(registrationError => {
+        console.log('SW registration failed: ', registrationError);
+      });
   });
 }
 
