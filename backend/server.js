@@ -40,4 +40,10 @@ async function startServer() {
     });
 }
 
+// Push notification endpoint
+app.post('/api/notify', async (req, res) => {
+  const { title, body } = req.body;
+  // Store notification in database or send via web-push
+  res.json({ success: true });
+});
 startServer();

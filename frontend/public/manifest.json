@@ -1,7 +1,7 @@
 {
   "name": "Urban Harvest Hub",
   "short_name": "HarvestHub",
-  "description": "Sustainable events, workshops & products for urban farmers",
+  "description": "Sustainable events, workshops & products",
   "start_url": "/",
   "display": "standalone",
   "theme_color": "#2e7d32",
@@ -19,22 +19,6 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
-    },
-    {
-      "src": "/icons/apple-touch-icon.png",
-      "sizes": "180x180",
-      "type": "image/png",
-      "purpose": "apple touch icon"
-    },
-    {
-      "src": "/icons/favicon-32x32.png",
-      "sizes": "32x32",
-      "type": "image/png"
-    },
-    {
-      "src": "/icons/favicon-16x16.png",
-      "sizes": "16x16",
-      "type": "image/png"
     }
   ]
 }

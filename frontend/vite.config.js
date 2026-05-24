@@ -7,36 +7,34 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['manifest.json', 'sw.js', 'icons/**/*'],
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'icons/*.png'],
       manifest: {
         name: 'Urban Harvest Hub',
         short_name: 'HarvestHub',
         description: 'Sustainable events, workshops & products',
         theme_color: '#2e7d32',
         background_color: '#ffffff',
+        display: 'standalone',
         icons: [
           {
-            src: '/icons/icon-72.png',
-            sizes: '72x72',
-            type: 'image/png'
-          },
-          {
-            src: '/icons/icon-192.png',
+            src: '/icons/android-chrome-192x192.png',
             sizes: '192x192',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any maskable'
           },
           {
-            src: '/icons/icon-512.png',
+            src: '/icons/android-chrome-512x512.png',
             sizes: '512x512',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any maskable'
           }
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,json}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/urban-harvest-backend\.onrender\.com\/api\/.*/i,
+            urlPattern: /^https:\/\/urban-harvest-pwa-backend\.onrender\.com\/api\/.*/i,
             handler: 'StaleWhileRevalidate',
             options: {
               cacheName: 'api-cache',

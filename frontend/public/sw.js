@@ -1,58 +1,27 @@
-const CACHE_NAME = 'urban-harvest-v2';
+const CACHE_NAME = 'urban-harvest-v1';
+const API_CACHE_NAME = 'urban-harvest-api-v1';
+const urlsToCache = ['/', '/index.html', '/offline.html'];
 
-// Files to cache immediately
-const urlsToCache = [
-  '/',
-  '/index.html',
-  '/manifest.json'
-];
-
-// Install event
-self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('Cache opened');
-        return cache.addAll(urlsToCache);
-      })
-  );
-  self.skipWaiting();
-});
-
-// Fetch event - Network first, then cache
-self.addEventListener('fetch', event => {
-  event.respondWith(
-    fetch(event.request)
-      .then(response => {
-        // Clone the response
-        const responseClone = response.clone();
-        
-        // Open cache and store the response
-        caches.open(CACHE_NAME).then(cache => {
-          cache.put(event.request, responseClone);
+// Cache API responses
+self.addEventListener('fetch', (event) => {
+  // Cache API requests
+  if (event.request.url.includes('/api/')) {
+    event.respondWith(
+      caches.open(API_CACHE_NAME).then((cache) => {
+        return fetch(event.request).then((response) => {
+          cache.put(event.request, response.clone());
+          return response;
+        }).catch(() => {
+          return cache.match(event.request);
         });
-        
-        return response;
       })
-      .catch(() => {
-        // If network fails, try cache
-        return caches.match(event.request);
+    );
+  } else {
+    // Cache static assets
+    event.respondWith(
+      caches.match(event.request).then((response) => {
+        return response || fetch(event.request);
       })
-  );
-});
-
-// Activate event - clean old caches
-self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.map(cacheName => {
-          if (cacheName !== CACHE_NAME) {
-            console.log('Deleting old cache:', cacheName);
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    })
-  );
+    );
+  }
 });
