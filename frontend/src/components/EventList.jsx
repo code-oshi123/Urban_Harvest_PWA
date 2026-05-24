@@ -1,80 +1,50 @@
-import React, { useState, useEffect } from "react";
-import { t } from "../utils/i18n";
+import React from 'react';
 
-export default function EventList({ events, loading, onSelect }) {
-  const [savedEvents, setSavedEvents] = useState([]);
-
-  // Load saved events from localStorage
-  useEffect(() => {
-    const saved = localStorage.getItem("savedEvents");
-    if (saved) {
-      setSavedEvents(JSON.parse(saved));
-    }
-  }, []);
-
-  const toggleSave = (eventId, e) => {
-    e.stopPropagation();
-    let newSaved;
-    if (savedEvents.includes(eventId)) {
-      newSaved = savedEvents.filter((id) => id !== eventId);
-    } else {
-      newSaved = [...savedEvents, eventId];
-    }
-    setSavedEvents(newSaved);
-    localStorage.setItem("savedEvents", JSON.stringify(newSaved));
-
-    // Show feedback
-    const message = savedEvents.includes(eventId)
-      ? "Removed from saved"
-      : "Saved for later!";
-    alert(message);
-  };
-
-  if (loading) return <div>{t("loading")}</div>;
-  if (events.length === 0) return <div>{t("no_events")}</div>;
+export default function EventList({ events, loading, onSelect, savedEvents = [], onSave, showDistance = false, userLocation = null }) {
+  
+  if (loading) return null;
+  if (!events || events.length === 0) {
+    return <div className="empty-state">No events found</div>;
+  }
 
   return (
     <div className="event-grid">
-      {events.map((event) => (
-        <div
-          key={event.id}
-          className="event-card"
-          onClick={() => onSelect(event)}
-        >
-          <img
-            src={
-              event.image_url ||
-              "https://via.placeholder.com/300x180?text=Urban+Harvest"
-            }
-            alt={event.title}
-          />
-          <div className="event-info">
-            <span className="category-badge">{event.category}</span>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
+      {events.map(event => {
+        const isSaved = savedEvents.includes(event.id);
+        
+        return (
+          <div key={event.id} className="event-card" onClick={() => onSelect(event)}>
+            <img 
+              src={event.image_url || 'https://images.unsplash.com/photo-1466692476868-aef1dfb1e735?w=400'} 
+              alt={event.title}
+              onError={(e) => {
+                e.target.src = 'https://images.unsplash.com/photo-1466692476868-aef1dfb1e735?w=400';
               }}
-            >
+            />
+            <div className="event-info">
+              <div className="event-header">
+                <span className="category-badge">{event.category}</span>
+                <button 
+                  className={`save-btn ${isSaved ? 'saved' : ''}`}
+                  onClick={(e) => onSave(event.id, e)}
+                >
+                  {isSaved ? '❤️' : '🤍'}
+                </button>
+              </div>
               <h3>{event.title}</h3>
-              <button
-                onClick={(e) => toggleSave(event.id, e)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  fontSize: "24px",
-                  cursor: "pointer",
-                }}
-              >
-                {savedEvents.includes(event.id) ? "❤️" : "🤍"}
-              </button>
+              <p className="event-date">📅 {new Date(event.date).toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+              })}</p>
+              {showDistance && event.distance && (
+                <p className="event-distance">📍 {event.distance.toFixed(1)} km away</p>
+              )}
+              <p className="event-description">{event.description.substring(0, 100)}...</p>
             </div>
-            <p>{new Date(event.date).toLocaleDateString()}</p>
-            <p>{event.description.substring(0, 80)}...</p>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

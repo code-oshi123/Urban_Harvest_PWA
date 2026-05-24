@@ -7,6 +7,8 @@ import SearchFilter from './components/SearchFilter';
 import OfflineToast from './components/OfflineToast';
 import BottomNav from './components/BottomNav';
 import AuthModal from './components/AuthModal';
+import Toast from './components/Toast';
+import LoadingSkeleton from './components/LoadingSkeleton';
 import { initDB, saveEventsOffline, getEventsOffline, processQueuedActions } from './utils/db';
 import './App.css';
 
@@ -17,36 +19,64 @@ function App() {
   const [filteredEvents, setFilteredEvents] = useState([]);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [isOffline, setIsOffline] = useState(false); // Changed from 'offline'
+  const [isOffline, setIsOffline] = useState(false);
   const [darkMode, setDarkMode] = useState(localStorage.getItem('theme') === 'dark');
   const [activeTab, setActiveTab] = useState('events');
   const [user, setUser] = useState(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
+  const [toast, setToast] = useState(null);
+  const [savedEvents, setSavedEvents] = useState([]);
 
-  // Better online/offline detection
+  // Show toast notification
+  const showToast = (message, type = 'info') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  // Load saved events from localStorage
   useEffect(() => {
-    // Check actual online status
+    const saved = localStorage.getItem('savedEvents');
+    if (saved) setSavedEvents(JSON.parse(saved));
+  }, []);
+
+  // Save event to localStorage with feedback
+  const saveEvent = (eventId, e) => {
+    e.stopPropagation();
+    
+    let newSaved;
+    if (savedEvents.includes(eventId)) {
+      newSaved = savedEvents.filter(id => id !== eventId);
+      showToast('Removed from saved events', 'info');
+    } else {
+      newSaved = [...savedEvents, eventId];
+      showToast('Event saved to your collection! ❤️', 'success');
+      
+      // Haptic feedback on mobile
+      if (window.navigator && window.navigator.vibrate) {
+        window.navigator.vibrate(50);
+      }
+    }
+    
+    setSavedEvents(newSaved);
+    localStorage.setItem('savedEvents', JSON.stringify(newSaved));
+  };
+
+  // Online/offline detection
+  useEffect(() => {
     const checkOnlineStatus = () => {
       setIsOffline(!navigator.onLine);
-      console.log('Online status:', navigator.onLine ? 'ONLINE ✅' : 'OFFLINE ❌');
+      if (navigator.onLine) {
+        showToast('Back online! Refreshing data...', 'success');
+        fetchEvents();
+      } else {
+        showToast('You are offline. Viewing cached content.', 'warning');
+      }
     };
 
-    // Initial check
     checkOnlineStatus();
-
-    // Listen for online/offline events
-    window.addEventListener('online', () => {
-      console.log('Browser says: ONLINE');
-      setIsOffline(false);
-      // Refresh data when coming back online
-      fetchEvents();
-    });
-    
-    window.addEventListener('offline', () => {
-      console.log('Browser says: OFFLINE');
-      setIsOffline(true);
-    });
+    window.addEventListener('online', checkOnlineStatus);
+    window.addEventListener('offline', checkOnlineStatus);
 
     return () => {
       window.removeEventListener('online', checkOnlineStatus);
@@ -60,103 +90,166 @@ function App() {
     localStorage.setItem('theme', darkMode ? 'dark' : 'light');
   }, [darkMode]);
 
-  // Initialize and fetch data
+  // Initialize
   useEffect(() => {
     initDB();
     const savedUser = localStorage.getItem('user');
-    if (savedUser) setUser(JSON.parse(savedUser));
+    if (savedUser) {
+      setUser(JSON.parse(savedUser));
+      showToast(`Welcome back, ${JSON.parse(savedUser).name}! 🌱`, 'success');
+    }
     fetchEvents();
   }, []);
 
-  // Improved fetch with better error handling
+  // Calculate distance between two points
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+
+  // Get user location and find nearby events
+  const getLocation = () => {
+    if ('geolocation' in navigator) {
+      showToast('📍 Getting your location...', 'info');
+      
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const location = {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude
+          };
+          setUserLocation(location);
+          
+          // Calculate distances for all events
+          const eventsWithDistance = events.map(event => ({
+            ...event,
+            distance: calculateDistance(
+              location.lat, location.lng,
+              event.location_lat || location.lat + (Math.random() - 0.5) * 0.1,
+              event.location_lng || location.lng + (Math.random() - 0.5) * 0.1
+            )
+          }));
+          
+          // Sort by distance
+          const sorted = [...eventsWithDistance].sort((a, b) => a.distance - b.distance);
+          setFilteredEvents(sorted);
+          
+          const closest = sorted[0];
+          showToast(
+            `📍 Found you! Closest event is ${closest.distance.toFixed(1)}km away - ${closest.title}`,
+            'success'
+          );
+          
+          // Switch to nearby tab
+          setActiveTab('nearby');
+          
+          // Haptic feedback
+          if (window.navigator && window.navigator.vibrate) {
+            window.navigator.vibrate(100);
+          }
+        },
+        (err) => {
+          console.error('Location error:', err);
+          showToast('❌ Unable to get location. Please enable location access.', 'error');
+        }
+      );
+    } else {
+      showToast('❌ Geolocation is not supported in your browser', 'error');
+    }
+  };
+
+  // Fetch events with caching
   const fetchEvents = async () => {
     setLoading(true);
     
-    // Check if actually online first
-    const isActuallyOnline = navigator.onLine;
-    console.log('Fetching events - Online status:', isActuallyOnline);
-    
     try {
-      // Try to fetch with timeout
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
       
       const res = await axios.get(`${API_URL}/events`, {
         signal: controller.signal,
-        timeout: 5000
+        timeout: 8000
       });
       
       clearTimeout(timeoutId);
       
-      console.log('✅ Events fetched from network:', res.data.data?.length);
       setEvents(res.data.data);
       setFilteredEvents(res.data.data);
       await saveEventsOffline(res.data.data);
-      setIsOffline(false); // Successfully fetched, definitely online
+      setIsOffline(false);
+      
+      showToast(`🌱 Loaded ${res.data.data.length} sustainable events!`, 'success');
       
     } catch (err) {
-      console.log('Network fetch failed, trying cache...');
-      
-      // Try to get from IndexedDB cache
+      console.log('Network failed, loading from cache...');
       const cachedEvents = await getEventsOffline();
       
       if (cachedEvents && cachedEvents.length > 0) {
-        console.log('📦 Using cached events:', cachedEvents.length);
         setEvents(cachedEvents);
         setFilteredEvents(cachedEvents);
-        // Only set offline if we're actually offline AND cache was used
-        if (!navigator.onLine) {
-          setIsOffline(true);
-        }
+        showToast(`📡 Offline mode - showing ${cachedEvents.length} cached events`, 'info');
       } else {
-        console.error('❌ No cached events available');
-        setEvents([]);
-        setFilteredEvents([]);
+        showToast('❌ Unable to load events. Please check your connection.', 'error');
       }
     } finally {
       setLoading(false);
     }
   };
 
-  // ... rest of your functions (handleLogin, getLocation, etc.)
-
+  // Handle login
   const handleLogin = (userData) => {
     setUser(userData);
     setShowAuthModal(false);
-  };
-
-  const getLocation = () => {
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-          alert(`📍 Location found!`);
-        },
-        (err) => {
-          console.error('Location error:', err);
-          alert('Please allow location access');
-        }
-      );
+    showToast(`🎉 Welcome ${userData.name}! You're now logged in.`, 'success');
+    
+    // Haptic feedback
+    if (window.navigator && window.navigator.vibrate) {
+      window.navigator.vibrate([100, 50, 100]);
     }
   };
 
+  // Handle logout
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setUser(null);
+    showToast('👋 You have been logged out. Come back soon!', 'info');
+  };
+
+  // Request notifications with feedback
   const requestNotifications = async () => {
     if ('Notification' in window) {
       const permission = await Notification.requestPermission();
       if (permission === 'granted') {
         const registration = await navigator.serviceWorker.ready;
-        registration.showNotification('Welcome to Urban Harvest Hub!', { 
-          body: 'You will receive updates about new events',
-          icon: '/icons/android-chrome-192x192.png'
+        registration.showNotification('✨ Notifications Enabled!', {
+          body: 'You will now receive updates about new events and reminders',
+          icon: '/icons/android-chrome-192x192.png',
+          badge: '/icons/favicon-32x32.png',
+          vibrate: [200, 100, 200]
         });
+        showToast('🔔 Notifications enabled! You\'ll get event updates.', 'success');
+      } else {
+        showToast('❌ Notifications blocked. You can enable them in browser settings.', 'warning');
       }
     }
   };
 
-  const toggleTheme = () => setDarkMode(!darkMode);
+  const toggleTheme = () => {
+    setDarkMode(!darkMode);
+    showToast(darkMode ? '☀️ Light mode enabled' : '🌙 Dark mode enabled', 'info');
+  };
 
-  // Render function
+  // Render content based on active tab
   const renderContent = () => {
+    if (loading) return <LoadingSkeleton />;
+
     switch (activeTab) {
       case 'events':
         return (
@@ -165,56 +258,107 @@ function App() {
             {selectedEvent ? (
               <EventDetail event={selectedEvent} onBack={() => setSelectedEvent(null)} />
             ) : (
-              <EventList events={filteredEvents} loading={loading} onSelect={setSelectedEvent} />
+              <EventList 
+                events={filteredEvents} 
+                loading={loading} 
+                onSelect={setSelectedEvent}
+                savedEvents={savedEvents}
+                onSave={saveEvent}
+              />
             )}
           </>
         );
+        
       case 'nearby':
         return (
-          <div>
-            <h2>📍 Nearby Events</h2>
-            {!userLocation && (
-              <button onClick={getLocation} className="action-btn" style={{ marginBottom: '20px' }}>
-                📍 Share My Location
-              </button>
+          <div className="nearby-view">
+            <div className="nearby-header">
+              <h2>📍 Events Near You</h2>
+              {!userLocation && (
+                <button onClick={getLocation} className="location-btn">
+                  📍 Share My Location
+                </button>
+              )}
+            </div>
+            
+            {userLocation && (
+              <div className="location-info">
+                <p>📍 Your location: {userLocation.lat.toFixed(4)}, {userLocation.lng.toFixed(4)}</p>
+                <p>🌱 Showing events sorted by distance</p>
+              </div>
             )}
-            <EventList events={filteredEvents.slice(0, 10)} loading={loading} onSelect={setSelectedEvent} />
+            
+            {filteredEvents.length === 0 && userLocation && (
+              <div className="empty-state">
+                <div className="empty-icon">📍</div>
+                <h3>No events nearby</h3>
+                <p>Try expanding your search or check back later for new events</p>
+              </div>
+            )}
+            
+            <EventList 
+              events={filteredEvents} 
+              loading={loading} 
+              onSelect={setSelectedEvent}
+              savedEvents={savedEvents}
+              onSave={saveEvent}
+              showDistance={!!userLocation}
+              userLocation={userLocation}
+            />
           </div>
         );
+        
       case 'saved':
-        const savedIds = JSON.parse(localStorage.getItem('savedEvents') || '[]');
-        const savedEvents = filteredEvents.filter(e => savedIds.includes(e.id));
+        const savedEventObjects = events.filter(e => savedEvents.includes(e.id));
         return (
-          <div>
+          <div className="saved-view">
             <h2>❤️ Saved Events</h2>
-            {savedEvents.length === 0 ? (
+            {savedEventObjects.length === 0 ? (
               <div className="empty-state">
                 <div className="empty-icon">🤍</div>
                 <h3>No saved events yet</h3>
                 <p>Click the heart icon on any event to save it for later</p>
               </div>
             ) : (
-              <EventList events={savedEvents} loading={loading} onSelect={setSelectedEvent} />
+              <EventList 
+                events={savedEventObjects} 
+                loading={false} 
+                onSelect={setSelectedEvent}
+                savedEvents={savedEvents}
+                onSave={saveEvent}
+              />
             )}
           </div>
         );
+        
       case 'profile':
         return (
-          <div>
+          <div className="profile-view">
             <h2>👤 Profile</h2>
             {user ? (
-              <div className="empty-state">
-                <p><strong>{user.name}</strong></p>
+              <div className="profile-card">
+                <div className="profile-avatar">🌱</div>
+                <h3>{user.name}</h3>
                 <p>{user.email}</p>
-                <button onClick={() => { localStorage.clear(); setUser(null); }} className="primary-btn">
-                  Logout
+                <div className="profile-stats">
+                  <div className="stat">
+                    <span className="stat-value">{savedEvents.length}</span>
+                    <span className="stat-label">Saved Events</span>
+                  </div>
+                  <div className="stat">
+                    <span className="stat-value">{events.length}</span>
+                    <span className="stat-label">Total Events</span>
+                  </div>
+                </div>
+                <button onClick={handleLogout} className="logout-btn">
+                  🚪 Logout
                 </button>
               </div>
             ) : (
               <div className="empty-state">
                 <div className="empty-icon">👤</div>
                 <h3>Not logged in</h3>
-                <p>Create an account to save events and get personalized recommendations</p>
+                <p>Create an account to save events and track your favorites</p>
                 <button onClick={() => setShowAuthModal(true)} className="primary-btn">
                   Login / Register
                 </button>
@@ -222,6 +366,7 @@ function App() {
             )}
           </div>
         );
+        
       default:
         return null;
     }
@@ -229,12 +374,13 @@ function App() {
 
   return (
     <div className="app">
-      {/* Sidebar for Desktop */}
+      {/* Sidebar Desktop */}
       <div className="sidebar">
         <div className="sidebar-logo">
           <span className="logo-icon">🌱</span>
           <span className="logo-text">HarvestHub</span>
         </div>
+        
         <nav className="sidebar-nav">
           {[
             { id: 'events', label: 'Events', icon: '🌱' },
@@ -252,33 +398,23 @@ function App() {
             </button>
           ))}
         </nav>
+        
         <div className="sidebar-footer">
-          {!user && (
-            <button 
-              className="sidebar-login-btn" 
-              onClick={() => setShowAuthModal(true)}
-              style={{ 
-                width: '100%', 
-                padding: '12px', 
-                background: '#4a7c59', 
-                color: 'white', 
-                border: 'none', 
-                borderRadius: '12px', 
-                cursor: 'pointer',
-                marginBottom: '12px',
-                fontWeight: '600'
-              }}
-            >
-              🔐 Login / Sign Up
-            </button>
-          )}
-          <small>Sustainable Living</small>
+          <div className="sidebar-stats">
+            <div className="stat-item">
+              <span>{events.length}</span>
+              <span>Events</span>
+            </div>
+            <div className="stat-item">
+              <span>{savedEvents.length}</span>
+              <span>Saved</span>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Main Content */}
       <div className="main-content">
-        {/* Top Navbar */}
         <div className="top-navbar">
           <h1>🌱 Urban Harvest Hub</h1>
           <div className="nav-actions">
@@ -286,7 +422,9 @@ function App() {
               {darkMode ? '☀️' : '🌙'}
             </button>
             {user ? (
-              <span style={{ fontSize: '14px' }}>👤 {user.name}</span>
+              <div className="user-badge">
+                <span>👤 {user.name.split(' ')[0]}</span>
+              </div>
             ) : (
               <button className="auth-nav-btn" onClick={() => setShowAuthModal(true)}>
                 Login
@@ -305,14 +443,12 @@ function App() {
             </button>
           </div>
 
-          {/* Only show offline toast when actually offline */}
           {isOffline && <OfflineToast />}
-          
           {renderContent()}
         </div>
       </div>
 
-      {/* Mobile Bottom Navigation */}
+      {/* Mobile Bottom Nav */}
       <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />
 
       {/* Auth Modal */}
@@ -321,6 +457,15 @@ function App() {
           API_URL={API_URL} 
           onLogin={handleLogin} 
           onClose={() => setShowAuthModal(false)} 
+        />
+      )}
+
+      {/* Toast Notifications */}
+      {toast && (
+        <Toast 
+          message={toast.message} 
+          type={toast.type} 
+          onClose={() => setToast(null)} 
         />
       )}
     </div>
