@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { t } from '../utils/i18n';
 
 export default function SearchFilter({ events, setFilteredEvents }) {
   const [search, setSearch] = useState('');
@@ -21,12 +22,12 @@ export default function SearchFilter({ events, setFilteredEvents }) {
 
   return (
     <div className="search-filter">
-      <input type="text" placeholder="🔍 Search events, workshops..." value={search} onChange={e => setSearch(e.target.value)} />
+      <input type="text" placeholder={t('search')} value={search} onChange={e => setSearch(e.target.value)} />
       <select value={category} onChange={e => setCategory(e.target.value)}>
-        <option value="all">All Categories</option>
-        <option value="workshop">Workshop</option>
-        <option value="event">Event</option>
-        <option value="product">Product</option>
+        <option value="all">{t('all_categories')}</option>
+        <option value="workshop">{t('workshops')}</option>
+        <option value="event">{t('events')}</option>
+        <option value="product">{t('products')}</option>
       </select>
     </div>
   );
