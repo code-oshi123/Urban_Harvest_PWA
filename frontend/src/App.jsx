@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import Navbar from './components/Navbar';
 import EventList from './components/EventList';
 import EventDetail from './components/EventDetail';
 import SearchFilter from './components/SearchFilter';
 import OfflineToast from './components/OfflineToast';
 import BottomNav from './components/BottomNav';
-import Auth from './components/Auth';
+import AuthModal from './components/AuthModal';
 import { initDB, saveEventsOffline, getEventsOffline, processQueuedActions } from './utils/db';
-import { t, setLanguage, getCurrentLanguage } from './utils/i18n';
 import './App.css';
 
-const API_URL = "https://urban-harvest-pwa-backend.onrender.com/api" || "http://localhost:5000/api";
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 function App() {
   const [events, setEvents] = useState([]);
@@ -21,11 +21,9 @@ function App() {
   const [darkMode, setDarkMode] = useState(localStorage.getItem('theme') === 'dark');
   const [activeTab, setActiveTab] = useState('events');
   const [user, setUser] = useState(null);
-  const [showAuth, setShowAuth] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
-  const [currentLanguage, setCurrentLanguage] = useState(getCurrentLanguage());
 
-  // Apply theme on load and change
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
     localStorage.setItem('theme', darkMode ? 'dark' : 'light');
@@ -34,8 +32,7 @@ function App() {
   useEffect(() => {
     initDB();
     const savedUser = localStorage.getItem('user');
-    const token = localStorage.getItem('token');
-    if (savedUser && token) setUser(JSON.parse(savedUser));
+    if (savedUser) setUser(JSON.parse(savedUser));
     fetchEvents();
 
     window.addEventListener('online', handleOnline);
@@ -56,15 +53,14 @@ function App() {
     setLoading(true);
     try {
       const res = await axios.get(`${API_URL}/events`);
-      const eventsData = res.data.data;
-      setEvents(eventsData);
-      setFilteredEvents(eventsData);
-      await saveEventsOffline(eventsData);
+      setEvents(res.data.data);
+      setFilteredEvents(res.data.data);
+      await saveEventsOffline(res.data.data);
     } catch (err) {
-      const cachedEvents = await getEventsOffline();
-      if (cachedEvents.length > 0) {
-        setEvents(cachedEvents);
-        setFilteredEvents(cachedEvents);
+      const cached = await getEventsOffline();
+      if (cached.length) {
+        setEvents(cached);
+        setFilteredEvents(cached);
         setOffline(true);
       }
     } finally {
@@ -72,38 +68,31 @@ function App() {
     }
   };
 
+  const handleLogin = (userData) => {
+    setUser(userData);
+    setShowAuthModal(false);
+  };
+
   const getLocation = () => {
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-          alert(`📍 Location found! Check the Nearby tab for events near you.`);
-        },
-        () => alert('📍 Please allow location access')
+        (pos) => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => alert('Please allow location access')
       );
     }
   };
 
-  const requestNotificationPermission = async () => {
+  const requestNotifications = async () => {
     if ('Notification' in window) {
       const permission = await Notification.requestPermission();
       if (permission === 'granted') {
         const registration = await navigator.serviceWorker.ready;
-        registration.showNotification('Urban Harvest Hub', {
-          body: '🌱 Welcome! You will receive updates about new events',
-          icon: '/icons/android-chrome-192x192.png'
-        });
+        registration.showNotification('Welcome!', { body: 'You will receive event updates' });
       }
     }
   };
 
   const toggleTheme = () => setDarkMode(!darkMode);
-
-  const handleLanguageChange = (lang) => {
-    setLanguage(lang);
-    setCurrentLanguage(lang);
-    window.location.reload();
-  };
 
   const renderContent = () => {
     switch (activeTab) {
@@ -121,50 +110,34 @@ function App() {
       case 'nearby':
         return (
           <div>
-            <h2 style={{ marginBottom: '20px' }}>📍 Events Near You</h2>
-            {!userLocation && (
-              <button onClick={getLocation} className="action-btn" style={{ marginBottom: '20px' }}>
-                📍 Share My Location
-              </button>
-            )}
+            <h2>📍 Nearby Events</h2>
+            {!userLocation && <button onClick={getLocation} className="action-btn">Share Location</button>}
             <EventList events={filteredEvents.slice(0, 10)} loading={loading} onSelect={setSelectedEvent} />
           </div>
         );
       case 'saved':
+        const savedIds = JSON.parse(localStorage.getItem('savedEvents') || '[]');
         return (
           <div>
-            <h2 style={{ marginBottom: '20px' }}>❤️ Saved Events</h2>
-            <EventList 
-              events={filteredEvents.filter(e => {
-                const saved = localStorage.getItem('savedEvents');
-                const savedIds = saved ? JSON.parse(saved) : [];
-                return savedIds.includes(e.id);
-              })} 
-              loading={loading} 
-              onSelect={setSelectedEvent} 
-            />
+            <h2>❤️ Saved Events</h2>
+            <EventList events={filteredEvents.filter(e => savedIds.includes(e.id))} loading={loading} onSelect={setSelectedEvent} />
           </div>
         );
       case 'profile':
         return (
           <div>
-            <h2 style={{ marginBottom: '20px' }}>👤 Profile</h2>
+            <h2>👤 Profile</h2>
             {user ? (
               <div className="empty-state">
                 <p><strong>{user.name}</strong></p>
                 <p>{user.email}</p>
-                <button onClick={() => { localStorage.clear(); setUser(null); }} className="primary-btn">
-                  Logout
-                </button>
+                <button onClick={() => { localStorage.clear(); setUser(null); }} className="primary-btn">Logout</button>
               </div>
             ) : (
               <div className="empty-state">
                 <div className="empty-icon">👤</div>
                 <h3>Not logged in</h3>
-                <p>Create an account to save events</p>
-                <button onClick={() => setShowAuth(true)} className="primary-btn">
-                  Login / Register
-                </button>
+                <button onClick={() => setShowAuthModal(true)} className="primary-btn">Login / Register</button>
               </div>
             )}
           </div>
@@ -176,7 +149,6 @@ function App() {
 
   return (
     <div className="app">
-      {/* Sidebar for Desktop */}
       <div className="sidebar">
         <div className="sidebar-logo">
           <span className="logo-icon">🌱</span>
@@ -184,73 +156,52 @@ function App() {
         </div>
         <nav className="sidebar-nav">
           {[
-            { id: 'events', label: 'Events', icon: '🌱', activeIcon: '🌿' },
-            { id: 'nearby', label: 'Nearby', icon: '📍', activeIcon: '📍' },
-            { id: 'saved', label: 'Saved', icon: '🤍', activeIcon: '❤️' },
-            { id: 'profile', label: 'Profile', icon: '👤', activeIcon: '👤' }
+            { id: 'events', label: 'Events', icon: '🌱' },
+            { id: 'nearby', label: 'Nearby', icon: '📍' },
+            { id: 'saved', label: 'Saved', icon: '❤️' },
+            { id: 'profile', label: 'Profile', icon: '👤' }
           ].map(tab => (
-            <button
-              key={tab.id}
-              className={`sidebar-item ${activeTab === tab.id ? 'active' : ''}`}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              <span className="sidebar-icon">{activeTab === tab.id ? tab.activeIcon : tab.icon}</span>
+            <button key={tab.id} className={`sidebar-item ${activeTab === tab.id ? 'active' : ''}`} onClick={() => setActiveTab(tab.id)}>
+              <span className="sidebar-icon">{tab.icon}</span>
               <span className="sidebar-label">{tab.label}</span>
             </button>
           ))}
         </nav>
         <div className="sidebar-footer">
+          {!user && (
+            <button className="sidebar-login-btn" onClick={() => setShowAuthModal(true)} style={{ width: '100%', padding: '12px', background: '#4a7c59', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', marginBottom: '12px' }}>
+              🔐 Login / Sign Up
+            </button>
+          )}
           <small>Sustainable Living</small>
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="main-content">
-        {/* Top Navbar */}
         <div className="top-navbar">
           <h1>🌱 Urban Harvest Hub</h1>
           <div className="nav-actions">
-            <select 
-              className="language-selector"
-              value={currentLanguage}
-              onChange={(e) => handleLanguageChange(e.target.value)}
-            >
-              <option value="en">🇬🇧 English</option>
-              <option value="es">🇪🇸 Español</option>
-              <option value="fr">🇫🇷 Français</option>
-            </select>
-            <button className="dark-toggle" onClick={toggleTheme}>
-              {darkMode ? '☀️' : '🌙'}
-            </button>
-            {user ? (
-              <span style={{ fontSize: '14px' }}>👤 {user.name}</span>
-            ) : (
-              <button className="auth-nav-btn" onClick={() => setShowAuth(true)}>
-                Login
-              </button>
-            )}
+            <button className="dark-toggle" onClick={toggleTheme}>{darkMode ? '☀️' : '🌙'}</button>
+            {user ? <span>👤 {user.name}</span> : <button className="auth-nav-btn" onClick={() => setShowAuthModal(true)}>Login</button>}
           </div>
         </div>
 
         <div className="container">
           <div className="actions">
-            <button onClick={requestNotificationPermission} className="action-btn">
-              🔔 Enable Notifications
-            </button>
-            <button onClick={getLocation} className="action-btn">
-              📍 Find Events Near Me
-            </button>
+            <button onClick={requestNotifications} className="action-btn">🔔 Enable Notifications</button>
+            <button onClick={getLocation} className="action-btn">📍 Find Events Near Me</button>
           </div>
-
           {offline && <OfflineToast />}
           {renderContent()}
         </div>
       </div>
 
-      {/* Mobile Bottom Navigation */}
       <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />
 
-      {showAuth && <Auth API_URL={API_URL} onLogin={(u) => { setUser(u); setShowAuth(false); }} onClose={() => setShowAuth(false)} />}
+      {/* Auth Modal */}
+      {showAuthModal && (
+        <AuthModal API_URL={API_URL} onLogin={handleLogin} onClose={() => setShowAuthModal(false)} />
+      )}
     </div>
   );
 }
