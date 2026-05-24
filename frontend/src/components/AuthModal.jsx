@@ -18,7 +18,11 @@ export default function AuthModal({ API_URL, onLogin, onClose }) {
     try {
       const endpoint = isLogin ? '/auth/login' : '/auth/register';
       const payload = isLogin ? { email, password } : { email, password, name };
+      
+      console.log(`Attempting ${isLogin ? 'login' : 'registration'} to:`, `${API_URL}${endpoint}`);
+      
       const res = await axios.post(`${API_URL}${endpoint}`, payload);
+      console.log('Response:', res.data);
 
       if (res.data.success) {
         localStorage.setItem('token', res.data.token);
@@ -27,6 +31,7 @@ export default function AuthModal({ API_URL, onLogin, onClose }) {
         onClose();
       }
     } catch (err) {
+      console.error('Auth error:', err.response?.data);
       setError(err.response?.data?.error || 'Authentication failed');
     } finally {
       setLoading(false);
@@ -41,7 +46,7 @@ export default function AuthModal({ API_URL, onLogin, onClose }) {
         <div className="auth-modal-header">
           <span className="auth-modal-icon">🌱</span>
           <h2>{isLogin ? 'Welcome Back!' : 'Join Urban Harvest'}</h2>
-          <p>{isLogin ? 'Login to save events' : 'Create an account to get started'}</p>
+          <p>{isLogin ? 'Login to save events and get updates' : 'Create an account to get started'}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="auth-modal-form">
@@ -84,4 +89,4 @@ export default function AuthModal({ API_URL, onLogin, onClose }) {
       </div>
     </div>
   );
-} 
+}
