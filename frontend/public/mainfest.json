@@ -1,12 +1,10 @@
 {
   "name": "Urban Harvest Hub",
   "short_name": "HarvestHub",
-  "description": "Sustainable events, workshops & products",
   "start_url": "/",
   "display": "standalone",
   "theme_color": "#2e7d32",
   "background_color": "#ffffff",
-  "orientation": "portrait",
   "icons": [
     {
       "src": "/icons/android-chrome-192x192.png",

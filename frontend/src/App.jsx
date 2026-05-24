@@ -6,6 +6,7 @@ import EventDetail from './components/EventDetail';
 import SearchFilter from './components/SearchFilter';
 import OfflineToast from './components/OfflineToast';
 import './App.css';
+import InstallPrompt from './components/InstallPrompt';
 
 // ✅ FIXED: Use local backend (no trailing slash)
 const API_URL = 'https://urban-harvest-pwa-backend.onrender.com/api';
@@ -86,6 +87,7 @@ function App() {
           <EventList events={filteredEvents} loading={loading} onSelect={setSelectedEvent} />
         )}
       </div>
+      <InstallPrompt />
     </div>
   );
 }
