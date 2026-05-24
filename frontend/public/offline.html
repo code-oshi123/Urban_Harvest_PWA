@@ -1,8 +1,55 @@
 <!DOCTYPE html>
-<html>
-<head><title>Offline</title></head>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Offline - Urban Harvest Hub</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      background: linear-gradient(135deg, #4a7c59 0%, #6b9c7a 100%);
+      color: white;
+      text-align: center;
+    }
+    .offline-container {
+      padding: 20px;
+    }
+    .offline-icon {
+      font-size: 80px;
+      margin-bottom: 20px;
+    }
+    h1 {
+      font-size: 28px;
+      margin-bottom: 10px;
+    }
+    p {
+      font-size: 16px;
+      opacity: 0.9;
+      margin-bottom: 30px;
+    }
+    button {
+      background: white;
+      color: #4a7c59;
+      border: none;
+      padding: 12px 30px;
+      border-radius: 40px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+  </style>
+</head>
 <body>
-  <h1>🌱 You're Offline</h1>
-  <p>Please check your internet connection.</p>
+  <div class="offline-container">
+    <div class="offline-icon">📡</div>
+    <h1>You're Offline</h1>
+    <p>Please check your internet connection<br>and try again.</p>
+    <button onclick="window.location.reload()">Try Again</button>
+  </div>
 </body>
 </html>

@@ -17,56 +17,108 @@ function App() {
   const [filteredEvents, setFilteredEvents] = useState([]);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [offline, setOffline] = useState(!navigator.onLine);
+  const [isOffline, setIsOffline] = useState(false); // Changed from 'offline'
   const [darkMode, setDarkMode] = useState(localStorage.getItem('theme') === 'dark');
   const [activeTab, setActiveTab] = useState('events');
   const [user, setUser] = useState(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
 
+  // Better online/offline detection
+  useEffect(() => {
+    // Check actual online status
+    const checkOnlineStatus = () => {
+      setIsOffline(!navigator.onLine);
+      console.log('Online status:', navigator.onLine ? 'ONLINE ✅' : 'OFFLINE ❌');
+    };
+
+    // Initial check
+    checkOnlineStatus();
+
+    // Listen for online/offline events
+    window.addEventListener('online', () => {
+      console.log('Browser says: ONLINE');
+      setIsOffline(false);
+      // Refresh data when coming back online
+      fetchEvents();
+    });
+    
+    window.addEventListener('offline', () => {
+      console.log('Browser says: OFFLINE');
+      setIsOffline(true);
+    });
+
+    return () => {
+      window.removeEventListener('online', checkOnlineStatus);
+      window.removeEventListener('offline', checkOnlineStatus);
+    };
+  }, []);
+
+  // Apply theme
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
     localStorage.setItem('theme', darkMode ? 'dark' : 'light');
   }, [darkMode]);
 
+  // Initialize and fetch data
   useEffect(() => {
     initDB();
     const savedUser = localStorage.getItem('user');
     if (savedUser) setUser(JSON.parse(savedUser));
     fetchEvents();
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', () => setOffline(true));
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-    };
   }, []);
 
-  const handleOnline = async () => {
-    setOffline(false);
-    await processQueuedActions(API_URL);
-    fetchEvents();
-  };
-
+  // Improved fetch with better error handling
   const fetchEvents = async () => {
     setLoading(true);
+    
+    // Check if actually online first
+    const isActuallyOnline = navigator.onLine;
+    console.log('Fetching events - Online status:', isActuallyOnline);
+    
     try {
-      const res = await axios.get(`${API_URL}/events`);
+      // Try to fetch with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+      
+      const res = await axios.get(`${API_URL}/events`, {
+        signal: controller.signal,
+        timeout: 5000
+      });
+      
+      clearTimeout(timeoutId);
+      
+      console.log('✅ Events fetched from network:', res.data.data?.length);
       setEvents(res.data.data);
       setFilteredEvents(res.data.data);
       await saveEventsOffline(res.data.data);
+      setIsOffline(false); // Successfully fetched, definitely online
+      
     } catch (err) {
-      const cached = await getEventsOffline();
-      if (cached.length) {
-        setEvents(cached);
-        setFilteredEvents(cached);
-        setOffline(true);
+      console.log('Network fetch failed, trying cache...');
+      
+      // Try to get from IndexedDB cache
+      const cachedEvents = await getEventsOffline();
+      
+      if (cachedEvents && cachedEvents.length > 0) {
+        console.log('📦 Using cached events:', cachedEvents.length);
+        setEvents(cachedEvents);
+        setFilteredEvents(cachedEvents);
+        // Only set offline if we're actually offline AND cache was used
+        if (!navigator.onLine) {
+          setIsOffline(true);
+        }
+      } else {
+        console.error('❌ No cached events available');
+        setEvents([]);
+        setFilteredEvents([]);
       }
     } finally {
       setLoading(false);
     }
   };
+
+  // ... rest of your functions (handleLogin, getLocation, etc.)
 
   const handleLogin = (userData) => {
     setUser(userData);
@@ -76,8 +128,14 @@ function App() {
   const getLocation = () => {
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
-        (pos) => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        () => alert('Please allow location access')
+        (pos) => {
+          setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+          alert(`📍 Location found!`);
+        },
+        (err) => {
+          console.error('Location error:', err);
+          alert('Please allow location access');
+        }
       );
     }
   };
@@ -87,13 +145,17 @@ function App() {
       const permission = await Notification.requestPermission();
       if (permission === 'granted') {
         const registration = await navigator.serviceWorker.ready;
-        registration.showNotification('Welcome!', { body: 'You will receive event updates' });
+        registration.showNotification('Welcome to Urban Harvest Hub!', { 
+          body: 'You will receive updates about new events',
+          icon: '/icons/android-chrome-192x192.png'
+        });
       }
     }
   };
 
   const toggleTheme = () => setDarkMode(!darkMode);
 
+  // Render function
   const renderContent = () => {
     switch (activeTab) {
       case 'events':
@@ -111,16 +173,29 @@ function App() {
         return (
           <div>
             <h2>📍 Nearby Events</h2>
-            {!userLocation && <button onClick={getLocation} className="action-btn">Share Location</button>}
+            {!userLocation && (
+              <button onClick={getLocation} className="action-btn" style={{ marginBottom: '20px' }}>
+                📍 Share My Location
+              </button>
+            )}
             <EventList events={filteredEvents.slice(0, 10)} loading={loading} onSelect={setSelectedEvent} />
           </div>
         );
       case 'saved':
         const savedIds = JSON.parse(localStorage.getItem('savedEvents') || '[]');
+        const savedEvents = filteredEvents.filter(e => savedIds.includes(e.id));
         return (
           <div>
             <h2>❤️ Saved Events</h2>
-            <EventList events={filteredEvents.filter(e => savedIds.includes(e.id))} loading={loading} onSelect={setSelectedEvent} />
+            {savedEvents.length === 0 ? (
+              <div className="empty-state">
+                <div className="empty-icon">🤍</div>
+                <h3>No saved events yet</h3>
+                <p>Click the heart icon on any event to save it for later</p>
+              </div>
+            ) : (
+              <EventList events={savedEvents} loading={loading} onSelect={setSelectedEvent} />
+            )}
           </div>
         );
       case 'profile':
@@ -131,13 +206,18 @@ function App() {
               <div className="empty-state">
                 <p><strong>{user.name}</strong></p>
                 <p>{user.email}</p>
-                <button onClick={() => { localStorage.clear(); setUser(null); }} className="primary-btn">Logout</button>
+                <button onClick={() => { localStorage.clear(); setUser(null); }} className="primary-btn">
+                  Logout
+                </button>
               </div>
             ) : (
               <div className="empty-state">
                 <div className="empty-icon">👤</div>
                 <h3>Not logged in</h3>
-                <button onClick={() => setShowAuthModal(true)} className="primary-btn">Login / Register</button>
+                <p>Create an account to save events and get personalized recommendations</p>
+                <button onClick={() => setShowAuthModal(true)} className="primary-btn">
+                  Login / Register
+                </button>
               </div>
             )}
           </div>
@@ -149,6 +229,7 @@ function App() {
 
   return (
     <div className="app">
+      {/* Sidebar for Desktop */}
       <div className="sidebar">
         <div className="sidebar-logo">
           <span className="logo-icon">🌱</span>
@@ -161,7 +242,11 @@ function App() {
             { id: 'saved', label: 'Saved', icon: '❤️' },
             { id: 'profile', label: 'Profile', icon: '👤' }
           ].map(tab => (
-            <button key={tab.id} className={`sidebar-item ${activeTab === tab.id ? 'active' : ''}`} onClick={() => setActiveTab(tab.id)}>
+            <button
+              key={tab.id}
+              className={`sidebar-item ${activeTab === tab.id ? 'active' : ''}`}
+              onClick={() => setActiveTab(tab.id)}
+            >
               <span className="sidebar-icon">{tab.icon}</span>
               <span className="sidebar-label">{tab.label}</span>
             </button>
@@ -169,7 +254,21 @@ function App() {
         </nav>
         <div className="sidebar-footer">
           {!user && (
-            <button className="sidebar-login-btn" onClick={() => setShowAuthModal(true)} style={{ width: '100%', padding: '12px', background: '#4a7c59', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', marginBottom: '12px' }}>
+            <button 
+              className="sidebar-login-btn" 
+              onClick={() => setShowAuthModal(true)}
+              style={{ 
+                width: '100%', 
+                padding: '12px', 
+                background: '#4a7c59', 
+                color: 'white', 
+                border: 'none', 
+                borderRadius: '12px', 
+                cursor: 'pointer',
+                marginBottom: '12px',
+                fontWeight: '600'
+              }}
+            >
               🔐 Login / Sign Up
             </button>
           )}
@@ -177,30 +276,52 @@ function App() {
         </div>
       </div>
 
+      {/* Main Content */}
       <div className="main-content">
+        {/* Top Navbar */}
         <div className="top-navbar">
           <h1>🌱 Urban Harvest Hub</h1>
           <div className="nav-actions">
-            <button className="dark-toggle" onClick={toggleTheme}>{darkMode ? '☀️' : '🌙'}</button>
-            {user ? <span>👤 {user.name}</span> : <button className="auth-nav-btn" onClick={() => setShowAuthModal(true)}>Login</button>}
+            <button className="dark-toggle" onClick={toggleTheme}>
+              {darkMode ? '☀️' : '🌙'}
+            </button>
+            {user ? (
+              <span style={{ fontSize: '14px' }}>👤 {user.name}</span>
+            ) : (
+              <button className="auth-nav-btn" onClick={() => setShowAuthModal(true)}>
+                Login
+              </button>
+            )}
           </div>
         </div>
 
         <div className="container">
           <div className="actions">
-            <button onClick={requestNotifications} className="action-btn">🔔 Enable Notifications</button>
-            <button onClick={getLocation} className="action-btn">📍 Find Events Near Me</button>
+            <button onClick={requestNotifications} className="action-btn">
+              🔔 Enable Notifications
+            </button>
+            <button onClick={getLocation} className="action-btn">
+              📍 Find Events Near Me
+            </button>
           </div>
-          {offline && <OfflineToast />}
+
+          {/* Only show offline toast when actually offline */}
+          {isOffline && <OfflineToast />}
+          
           {renderContent()}
         </div>
       </div>
 
+      {/* Mobile Bottom Navigation */}
       <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />
 
       {/* Auth Modal */}
       {showAuthModal && (
-        <AuthModal API_URL={API_URL} onLogin={handleLogin} onClose={() => setShowAuthModal(false)} />
+        <AuthModal 
+          API_URL={API_URL} 
+          onLogin={handleLogin} 
+          onClose={() => setShowAuthModal(false)} 
+        />
       )}
     </div>
   );
