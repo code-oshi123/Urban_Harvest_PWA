@@ -1,364 +1,425 @@
-import React, { useState, useEffect } from "react";
-import axios from "axios";
-import Navbar from "./components/Navbar";
-import EventList from "./components/EventList";
-import EventDetail from "./components/EventDetail";
-import SearchFilter from "./components/SearchFilter";
-import OfflineToast from "./components/OfflineToast";
-import BottomNav from "./components/BottomNav";
-import AuthModal from "./components/AuthModal";
-import Toast from "./components/Toast";
-import LoadingSkeleton from "./components/LoadingSkeleton";
-import {
-  initDB,
-  saveEventsOffline,
-  getEventsOffline,
-  processQueuedActions,
-} from "./utils/db";
-import "./App.css";
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import EventList from './components/EventList';
+import EventDetail from './components/EventDetail';
+import SearchFilter from './components/SearchFilter';
+import OfflineToast from './components/OfflineToast';
+import BottomNav from './components/BottomNav';
+import AuthModal from './components/AuthModal';
+import ProfilePage from './components/ProfilePage';
+import EventManagement from './components/EventManagement';
+import MyBookings from './components/MyBookings';
+import WeatherWidget from './components/WeatherWidget';
+import Toast from './components/Toast';
+import LoadingSkeleton from './components/LoadingSkeleton';
+import { initDB, saveEventsOffline, getEventsOffline, processQueuedActions } from './utils/db';
+import './App.css';
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 function App() {
+  // State Management
   const [events, setEvents] = useState([]);
   const [filteredEvents, setFilteredEvents] = useState([]);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isOffline, setIsOffline] = useState(false);
-  const [darkMode, setDarkMode] = useState(
-    localStorage.getItem("theme") === "dark",
-  );
-  const [activeTab, setActiveTab] = useState("events");
+  const [darkMode, setDarkMode] = useState(localStorage.getItem('theme') === 'dark');
+  const [activeTab, setActiveTab] = useState('events');
   const [user, setUser] = useState(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
   const [toast, setToast] = useState(null);
   const [savedEvents, setSavedEvents] = useState([]);
+  const [userBookings, setUserBookings] = useState([]);
 
-  // Show toast notification
-  const showToast = (message, type = "info") => {
+  // ============ HELPER FUNCTIONS ============
+  
+  const showToast = (message, type = 'info') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
 
-  // Load saved events from localStorage
-  useEffect(() => {
-    const saved = localStorage.getItem("savedEvents");
-    if (saved) setSavedEvents(JSON.parse(saved));
-  }, []);
-
-  // Save event to localStorage with feedback
-  const saveEvent = (eventId, e) => {
-    e.stopPropagation();
-
-    let newSaved;
-    if (savedEvents.includes(eventId)) {
-      newSaved = savedEvents.filter((id) => id !== eventId);
-      showToast("Removed from saved events", "info");
-    } else {
-      newSaved = [...savedEvents, eventId];
-      showToast("Event saved to your collection! ❤️", "success");
-
-      // Haptic feedback on mobile
-      if (window.navigator && window.navigator.vibrate) {
-        window.navigator.vibrate(50);
-      }
-    }
-
-    setSavedEvents(newSaved);
-    localStorage.setItem("savedEvents", JSON.stringify(newSaved));
-  };
-
-  // Online/offline detection
-  useEffect(() => {
-    const checkOnlineStatus = () => {
-      setIsOffline(!navigator.onLine);
-      if (navigator.onLine) {
-        showToast("Back online! Refreshing data...", "success");
-        fetchEvents();
-      } else {
-        showToast("You are offline. Viewing cached content.", "warning");
-      }
-    };
-
-    checkOnlineStatus();
-    window.addEventListener("online", checkOnlineStatus);
-    window.addEventListener("offline", checkOnlineStatus);
-
-    return () => {
-      window.removeEventListener("online", checkOnlineStatus);
-      window.removeEventListener("offline", checkOnlineStatus);
-    };
-  }, []);
-
-  // Apply theme
-  useEffect(() => {
-    document.documentElement.setAttribute(
-      "data-theme",
-      darkMode ? "dark" : "light",
-    );
-    localStorage.setItem("theme", darkMode ? "dark" : "light");
-  }, [darkMode]);
-
-  // Initialize
-  useEffect(() => {
-    initDB();
-    const savedUser = localStorage.getItem("user");
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-      showToast(`Welcome back, ${JSON.parse(savedUser).name}! 🌱`, "success");
-    }
-    fetchEvents();
-  }, []);
-
-  // Calculate distance between two points
+  // Calculate distance between two points (Haversine formula)
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
     const R = 6371;
-    const dLat = ((lat2 - lat1) * Math.PI) / 180;
-    const dLon = ((lon2 - lon1) * Math.PI) / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((lat1 * Math.PI) / 180) *
-        Math.cos((lat2 * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     return R * c;
   };
 
-  // Get user location and find nearby events
-  const getLocation = () => {
-    if ("geolocation" in navigator) {
-      showToast("📍 Getting your location...", "info");
-
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const location = {
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-          };
-          setUserLocation(location);
-
-          // Calculate distances for all events
-          const eventsWithDistance = events.map((event) => ({
-            ...event,
-            distance: calculateDistance(
-              location.lat,
-              location.lng,
-              event.location_lat || location.lat + (Math.random() - 0.5) * 0.1,
-              event.location_lng || location.lng + (Math.random() - 0.5) * 0.1,
-            ),
-          }));
-
-          // Sort by distance
-          const sorted = [...eventsWithDistance].sort(
-            (a, b) => a.distance - b.distance,
-          );
-          setFilteredEvents(sorted);
-
-          const closest = sorted[0];
-          showToast(
-            `📍 Found you! Closest event is ${closest.distance.toFixed(1)}km away - ${closest.title}`,
-            "success",
-          );
-
-          // Switch to nearby tab
-          setActiveTab("nearby");
-
-          // Haptic feedback
-          if (window.navigator && window.navigator.vibrate) {
-            window.navigator.vibrate(100);
-          }
-        },
-        (err) => {
-          console.error("Location error:", err);
-          showToast(
-            "❌ Unable to get location. Please enable location access.",
-            "error",
-          );
-        },
-      );
-    } else {
-      showToast("❌ Geolocation is not supported in your browser", "error");
-    }
-  };
-
-  // Fetch events with caching
+  // ============ EVENT CRUD OPERATIONS ============
+  
   const fetchEvents = async () => {
     setLoading(true);
-
+    
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000);
-
+      
       const res = await axios.get(`${API_URL}/events`, {
         signal: controller.signal,
-        timeout: 8000,
+        timeout: 8000
       });
-
+      
       clearTimeout(timeoutId);
-
-      setEvents(res.data.data);
-      setFilteredEvents(res.data.data);
-      await saveEventsOffline(res.data.data);
+      
+      const eventsData = res.data.data;
+      setEvents(eventsData);
+      setFilteredEvents(eventsData);
+      await saveEventsOffline(eventsData);
       setIsOffline(false);
-
-      showToast(
-        `🌱 Loaded ${res.data.data.length} sustainable events!`,
-        "success",
-      );
+      
+      showToast(`🌱 Loaded ${eventsData.length} sustainable events!`, 'success');
+      
     } catch (err) {
-      console.log("Network failed, loading from cache...");
+      console.log('Network failed, loading from cache...');
       const cachedEvents = await getEventsOffline();
-
+      
       if (cachedEvents && cachedEvents.length > 0) {
         setEvents(cachedEvents);
         setFilteredEvents(cachedEvents);
-        showToast(
-          `📡 Offline mode - showing ${cachedEvents.length} cached events`,
-          "info",
-        );
+        showToast(`📡 Offline mode - showing ${cachedEvents.length} cached events`, 'info');
       } else {
-        showToast(
-          "❌ Unable to load events. Please check your connection.",
-          "error",
-        );
+        showToast('❌ Unable to load events. Please check your connection.', 'error');
       }
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle login
+  // Save event to database
+  const saveEventToDatabase = async (eventId) => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      showToast('Please login to save events', 'warning');
+      setShowAuthModal(true);
+      return false;
+    }
+    
+    try {
+      await axios.post(
+        `${API_URL}/auth/saved-events/${eventId}`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      return true;
+    } catch (error) {
+      console.error('Save error:', error);
+      showToast('Failed to save event', 'error');
+      return false;
+    }
+  };
+
+  // Remove saved event from database
+  const unsaveEventFromDatabase = async (eventId) => {
+    const token = localStorage.getItem('token');
+    if (!token) return false;
+    
+    try {
+      await axios.delete(
+        `${API_URL}/auth/saved-events/${eventId}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      return true;
+    } catch (error) {
+      console.error('Unsave error:', error);
+      return false;
+    }
+  };
+
+  // Load saved events from database
+  const loadSavedEventsFromDatabase = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) return [];
+    
+    try {
+      const res = await axios.get(
+        `${API_URL}/auth/saved-events`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const savedIds = res.data.data.map(event => event.id);
+      setSavedEvents(savedIds);
+      return savedIds;
+    } catch (error) {
+      console.error('Load saved events error:', error);
+      return [];
+    }
+  };
+
+  // Load user bookings
+  const loadUserBookings = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) return [];
+    
+    try {
+      const res = await axios.get(
+        `${API_URL}/auth/bookings`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setUserBookings(res.data.bookings || []);
+      return res.data.bookings;
+    } catch (error) {
+      console.error('Load bookings error:', error);
+      return [];
+    }
+  };
+
+  // Toggle save event
+  const toggleSave = async (eventId, e) => {
+    e.stopPropagation();
+    
+    const isCurrentlySaved = savedEvents.includes(eventId);
+    
+    if (isCurrentlySaved) {
+      const success = await unsaveEventFromDatabase(eventId);
+      if (success) {
+        setSavedEvents(savedEvents.filter(id => id !== eventId));
+        showToast('Removed from your saved events', 'info');
+      }
+    } else {
+      const success = await saveEventToDatabase(eventId);
+      if (success) {
+        setSavedEvents([...savedEvents, eventId]);
+        showToast('Event saved to your collection! ❤️', 'success');
+        
+        if (window.navigator && window.navigator.vibrate) {
+          window.navigator.vibrate(50);
+        }
+      }
+    }
+  };
+
+  // ============ USER LOCATION & WEATHER ============
+  
+  const getLocation = () => {
+    if ('geolocation' in navigator) {
+      showToast('📍 Getting your location...', 'info');
+      
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const location = {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude
+          };
+          setUserLocation(location);
+          
+          const eventsWithDistance = events.map(event => ({
+            ...event,
+            distance: calculateDistance(
+              location.lat, location.lng,
+              event.location_lat || location.lat + (Math.random() - 0.5) * 0.1,
+              event.location_lng || location.lng + (Math.random() - 0.5) * 0.1
+            )
+          }));
+          
+          const sorted = [...eventsWithDistance].sort((a, b) => a.distance - b.distance);
+          setFilteredEvents(sorted);
+          
+          const closest = sorted[0];
+          if (closest) {
+            showToast(
+              `📍 Found you! Closest event is ${closest.distance.toFixed(1)}km away - ${closest.title}`,
+              'success'
+            );
+          }
+          
+          setActiveTab('nearby');
+          
+          if (window.navigator && window.navigator.vibrate) {
+            window.navigator.vibrate(100);
+          }
+        },
+        (err) => {
+          console.error('Location error:', err);
+          showToast('❌ Unable to get location. Please enable location access.', 'error');
+        }
+      );
+    } else {
+      showToast('❌ Geolocation is not supported in your browser', 'error');
+    }
+  };
+
+  // ============ NOTIFICATIONS ============
+  
+  const requestNotifications = async () => {
+    if ('Notification' in window) {
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        const registration = await navigator.serviceWorker.ready;
+        registration.showNotification('✨ Notifications Enabled!', {
+          body: 'You will now receive updates about new events and reminders',
+          icon: '/icons/android-chrome-192x192.png',
+          badge: '/icons/favicon-32x32.png',
+          vibrate: [200, 100, 200]
+        });
+        showToast('🔔 Notifications enabled! You\'ll get event updates.', 'success');
+      } else {
+        showToast('❌ Notifications blocked. You can enable them in browser settings.', 'warning');
+      }
+    }
+  };
+
+  // ============ AUTHENTICATION ============
+  
   const handleLogin = (userData) => {
     setUser(userData);
     setShowAuthModal(false);
-    showToast(`🎉 Welcome ${userData.name}! You're now logged in.`, "success");
-
-    // Haptic feedback
+    showToast(`🎉 Welcome ${userData.name}! You're now logged in.`, 'success');
+    
+    loadSavedEventsFromDatabase();
+    loadUserBookings();
+    
     if (window.navigator && window.navigator.vibrate) {
       window.navigator.vibrate([100, 50, 100]);
     }
   };
 
-  // Handle logout
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     setUser(null);
-    showToast("👋 You have been logged out. Come back soon!", "info");
+    setSavedEvents([]);
+    setUserBookings([]);
+    showToast('👋 You have been logged out. Come back soon!', 'info');
+    setActiveTab('events');
   };
 
-  // Request notifications with feedback
-  const requestNotifications = async () => {
-    if ("Notification" in window) {
-      const permission = await Notification.requestPermission();
-      if (permission === "granted") {
-        const registration = await navigator.serviceWorker.ready;
-        registration.showNotification("✨ Notifications Enabled!", {
-          body: "You will now receive updates about new events and reminders",
-          icon: "/icons/android-chrome-192x192.png",
-          badge: "/icons/favicon-32x32.png",
-          vibrate: [200, 100, 200],
-        });
-        showToast(
-          "🔔 Notifications enabled! You'll get event updates.",
-          "success",
-        );
-      } else {
-        showToast(
-          "❌ Notifications blocked. You can enable them in browser settings.",
-          "warning",
-        );
-      }
-    }
+  const handleProfileUpdate = (updatedUser) => {
+    setUser(updatedUser);
+    showToast('Profile updated successfully!', 'success');
   };
 
+  // ============ THEME ============
+  
   const toggleTheme = () => {
     setDarkMode(!darkMode);
-    showToast(
-      darkMode ? "☀️ Light mode enabled" : "🌙 Dark mode enabled",
-      "info",
-    );
+    showToast(darkMode ? '☀️ Light mode enabled' : '🌙 Dark mode enabled', 'info');
   };
 
-  // Render content based on active tab
+  // ============ EFFECTS ============
+  
+  // Apply theme
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
+    localStorage.setItem('theme', darkMode ? 'dark' : 'light');
+  }, [darkMode]);
+
+  // Online/offline detection
+  useEffect(() => {
+    const checkOnlineStatus = () => {
+      setIsOffline(!navigator.onLine);
+      if (navigator.onLine) {
+        showToast('Back online! Refreshing data...', 'success');
+        fetchEvents();
+        if (user) {
+          loadSavedEventsFromDatabase();
+          loadUserBookings();
+        }
+      } else {
+        showToast('You are offline. Viewing cached content.', 'warning');
+      }
+    };
+
+    checkOnlineStatus();
+    window.addEventListener('online', checkOnlineStatus);
+    window.addEventListener('offline', checkOnlineStatus);
+
+    return () => {
+      window.removeEventListener('online', checkOnlineStatus);
+      window.removeEventListener('offline', checkOnlineStatus);
+    };
+  }, []);
+
+  // Initialize app
+  useEffect(() => {
+    initDB();
+    
+    const savedUser = localStorage.getItem('user');
+    const token = localStorage.getItem('token');
+    
+    if (savedUser && token) {
+      setUser(JSON.parse(savedUser));
+      loadSavedEventsFromDatabase();
+      loadUserBookings();
+    }
+    
+    fetchEvents();
+  }, []);
+
+  // ============ RENDER CONTENT BASED ON TAB ============
+  
   const renderContent = () => {
-    if (loading) return <LoadingSkeleton />;
+    if (loading && events.length === 0) {
+      return <LoadingSkeleton />;
+    }
 
     switch (activeTab) {
-      case "events":
+      case 'events':
         return (
           <>
-            <SearchFilter
-              events={events}
-              setFilteredEvents={setFilteredEvents}
-            />
+            <SearchFilter events={events} setFilteredEvents={setFilteredEvents} />
             {selectedEvent ? (
-              <EventDetail
-                event={selectedEvent}
-                onBack={() => setSelectedEvent(null)}
-              />
+              <EventDetail event={selectedEvent} onBack={() => setSelectedEvent(null)} />
             ) : (
-              <EventList
-                events={filteredEvents}
-                loading={loading}
+              <EventList 
+                events={filteredEvents} 
+                loading={loading} 
                 onSelect={setSelectedEvent}
                 savedEvents={savedEvents}
-                onSave={saveEvent}
+                onSave={toggleSave}
+                API_URL={API_URL}
+                user={user}
+                isAdmin={user?.email === 'admin1@gmail.com'}
+                onEventDelete={() => fetchEvents()}
               />
             )}
           </>
         );
-
-      case "nearby":
+        
+      case 'nearby':
         return (
           <div className="nearby-view">
             <div className="nearby-header">
               <h2>📍 Events Near You</h2>
               {!userLocation && (
-                <button onClick={getLocation} className="location-btn">
+                <button className="location-btn" onClick={getLocation}>
                   📍 Share My Location
                 </button>
               )}
             </div>
-
+            
             {userLocation && (
               <div className="location-info">
-                <p>
-                  📍 Your location: {userLocation.lat.toFixed(4)},{" "}
-                  {userLocation.lng.toFixed(4)}
-                </p>
-                <p>🌱 Showing events sorted by distance</p>
+                <p>📍 Your location: {userLocation.lat.toFixed(4)}, {userLocation.lng.toFixed(4)}</p>
+                <p>🌱 Showing {filteredEvents.length} events sorted by distance</p>
               </div>
             )}
-
-            {filteredEvents.length === 0 && userLocation && (
-              <div className="empty-state">
-                <div className="empty-icon">📍</div>
-                <h3>No events nearby</h3>
-                <p>
-                  Try expanding your search or check back later for new events
-                </p>
-              </div>
-            )}
-
-            <EventList
-              events={filteredEvents}
-              loading={loading}
+            
+            <EventList 
+              events={filteredEvents} 
+              loading={loading} 
               onSelect={setSelectedEvent}
               savedEvents={savedEvents}
-              onSave={saveEvent}
+              onSave={toggleSave}
               showDistance={!!userLocation}
               userLocation={userLocation}
+              API_URL={API_URL}
+              user={user}
+              isAdmin={user?.email === 'admin1@gmail.com'}
             />
           </div>
         );
-
-      case "saved":
-        const savedEventObjects = events.filter((e) =>
-          savedEvents.includes(e.id),
-        );
+        
+      case 'bookings':
+        return <MyBookings API_URL={API_URL} />;
+        
+      case 'saved':
+        const savedEventObjects = events.filter(e => savedEvents.includes(e.id));
         return (
           <div className="saved-view">
             <h2>❤️ Saved Events</h2>
@@ -369,247 +430,113 @@ function App() {
                 <p>Click the heart icon on any event to save it for later</p>
               </div>
             ) : (
-              <EventList
-                events={savedEventObjects}
-                loading={false}
+              <EventList 
+                events={savedEventObjects} 
+                loading={false} 
                 onSelect={setSelectedEvent}
                 savedEvents={savedEvents}
-                onSave={saveEvent}
+                onSave={toggleSave}
+                API_URL={API_URL}
+                user={user}
+                isAdmin={user?.email === 'admin1@gmail.com'}
               />
             )}
           </div>
         );
-
-      case "manage":
+        
+      case 'manage':
+        // Check if user is logged in
+        if (!user) {
+          return (
+            <div className="empty-state">
+              <div className="empty-icon">🔒</div>
+              <h3>Admin Access Required</h3>
+              <p>Please login with admin credentials to manage events</p>
+              <button className="primary-btn" onClick={() => setShowAuthModal(true)}>
+                Login as Admin
+              </button>
+              <div className="admin-info" style={{ marginTop: '20px', padding: '15px', background: 'var(--bg-card)', borderRadius: '12px' }}>
+                <p style={{ marginBottom: '8px', fontWeight: 'bold' }}>Demo Admin:</p>
+                <code>admin1@gmail.com / admin123</code>
+              </div>
+            </div>
+          );
+        }
+        
+        // Check if user is admin
+        if (user.email !== 'admin1@gmail.com') {
+          return (
+            <div className="empty-state">
+              <div className="empty-icon">⛔</div>
+              <h3>Access Denied</h3>
+              <p>This page is only accessible to administrators</p>
+              <button className="primary-btn" onClick={handleLogout}>
+                Logout and try admin account
+              </button>
+            </div>
+          );
+        }
+        
         return (
-          <EventManagement
-            events={events}
+          <EventManagement 
+            events={events} 
             onEventUpdate={fetchEvents}
             API_URL={API_URL}
             user={user}
           />
         );
-
-      case "profile":
+        
+      case 'profile':
         return (
-          <div className="profile-view">
-            <h2>👤 Profile</h2>
-            {user ? (
-              <div className="profile-card">
-                <div className="profile-avatar">🌱</div>
-                <h3>{user.name}</h3>
-                <p>{user.email}</p>
-                <div className="profile-stats">
-                  <div className="stat">
-                    <span className="stat-value">{savedEvents.length}</span>
-                    <span className="stat-label">Saved Events</span>
-                  </div>
-                  <div className="stat">
-                    <span className="stat-value">{events.length}</span>
-                    <span className="stat-label">Total Events</span>
-                  </div>
-                </div>
-                <button onClick={handleLogout} className="logout-btn">
-                  🚪 Logout
-                </button>
-              </div>
-            ) : (
-              <div className="empty-state">
-                <div className="empty-icon">👤</div>
-                <h3>Not logged in</h3>
-                <p>Create an account to save events and track your favorites</p>
-                <button
-                  onClick={() => setShowAuthModal(true)}
-                  className="primary-btn"
-                >
-                  Login / Register
-                </button>
-              </div>
-            )}
-          </div>
+          <ProfilePage 
+            user={user}
+            onLogout={handleLogout}
+            API_URL={API_URL}
+            savedCount={savedEvents.length}
+            totalEvents={events.length}
+            onUpdate={handleProfileUpdate}
+          />
         );
-
+        
       default:
         return null;
     }
   };
 
-  // Add these functions to your App.jsx
-
-  // Save event to database (not just localStorage)
-  const saveEventToDatabase = async (eventId) => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      showToast("Please login to save events", "warning");
-      setShowAuthModal(true);
-      return false;
-    }
-
-    try {
-      await axios.post(
-        `${API_URL}/auth/saved-events/${eventId}`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
-      return true;
-    } catch (error) {
-      console.error("Save error:", error);
-      showToast("Failed to save event", "error");
-      return false;
-    }
-  };
-
-  // Remove saved event from database
-  const unsaveEventFromDatabase = async (eventId) => {
-    const token = localStorage.getItem("token");
-    if (!token) return false;
-
-    try {
-      await axios.delete(`${API_URL}/auth/saved-events/${eventId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      return true;
-    } catch (error) {
-      console.error("Unsave error:", error);
-      return false;
-    }
-  };
-
-  // Load saved events from database
-  const loadSavedEventsFromDatabase = async () => {
-    const token = localStorage.getItem("token");
-    if (!token) return [];
-
-    try {
-      const res = await axios.get(`${API_URL}/auth/saved-events`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const savedIds = res.data.data.map((event) => event.id);
-      setSavedEvents(savedIds);
-      return savedIds;
-    } catch (error) {
-      console.error("Load saved events error:", error);
-      return [];
-    }
-  };
-
-  // Create new event
-  const createEvent = async (eventData) => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      showToast("Please login to create events", "warning");
-      setShowAuthModal(true);
-      return false;
-    }
-
-    try {
-      const res = await axios.post(`${API_URL}/auth/events`, eventData, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      showToast("Event created successfully!", "success");
-      fetchEvents(); // Refresh list
-      return res.data.id;
-    } catch (error) {
-      showToast(
-        error.response?.data?.error || "Failed to create event",
-        "error",
-      );
-      return false;
-    }
-  };
-
-  // Update existing event
-  const updateEvent = async (eventId, eventData) => {
-    const token = localStorage.getItem("token");
-    if (!token) return false;
-
-    try {
-      await axios.put(`${API_URL}/auth/events/${eventId}`, eventData, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      showToast("Event updated successfully!", "success");
-      fetchEvents();
-      return true;
-    } catch (error) {
-      showToast("Failed to update event", "error");
-      return false;
-    }
-  };
-
-  // Delete event
-  const deleteEvent = async (eventId) => {
-    const token = localStorage.getItem("token");
-    if (!token) return false;
-
-    if (window.confirm("Are you sure you want to delete this event?")) {
-      try {
-        await axios.delete(`${API_URL}/auth/events/${eventId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        showToast("Event deleted successfully", "success");
-        fetchEvents();
-        return true;
-      } catch (error) {
-        showToast("Failed to delete event", "error");
-        return false;
-      }
-    }
-    return false;
-  };
-
-  // Update toggleSave function to use database
-  const toggleSave = async (eventId, e) => {
-    e.stopPropagation();
-
-    const isCurrentlySaved = savedEvents.includes(eventId);
-
-    if (isCurrentlySaved) {
-      const success = await unsaveEventFromDatabase(eventId);
-      if (success) {
-        setSavedEvents(savedEvents.filter((id) => id !== eventId));
-        showToast("Removed from your saved events", "info");
-      }
-    } else {
-      const success = await saveEventToDatabase(eventId);
-      if (success) {
-        setSavedEvents([...savedEvents, eventId]);
-        showToast("Event saved to your collection! ❤️", "success");
-
-        // Haptic feedback on mobile
-        if (window.navigator && window.navigator.vibrate) {
-          window.navigator.vibrate(50);
-        }
-      }
-    }
-  };
-
+  // ============ MAIN RENDER ============
+  
   return (
     <div className="app">
-      {/* Sidebar Desktop */}
+      {/* Sidebar for Desktop */}
       <div className="sidebar">
         <div className="sidebar-logo">
           <span className="logo-icon">🌱</span>
           <span className="logo-text">HarvestHub</span>
         </div>
-
+        
         <nav className="sidebar-nav">
           {[
-            { id: "events", label: "Events", icon: "🌱" },
-            { id: "nearby", label: "Nearby", icon: "📍" },
-            { id: "saved", label: "Saved", icon: "❤️" },
-            { id: "profile", label: "Profile", icon: "👤" },
-          ].map((tab) => (
+            { id: 'events', label: 'Events', icon: '🌱' },
+            { id: 'nearby', label: 'Nearby', icon: '📍' },
+            { id: 'bookings', label: 'Bookings', icon: '📅' },
+            { id: 'saved', label: 'Saved', icon: '❤️' },
+            { id: 'manage', label: 'Manage', icon: '📝' },
+            { id: 'profile', label: 'Profile', icon: '👤' }
+          ].map(tab => (
             <button
               key={tab.id}
-              className={`sidebar-item ${activeTab === tab.id ? "active" : ""}`}
-              onClick={() => setActiveTab(tab.id)}
+              className={`sidebar-item ${activeTab === tab.id ? 'active' : ''}`}
+              onClick={() => {
+                setSelectedEvent(null);
+                setActiveTab(tab.id);
+              }}
             >
               <span className="sidebar-icon">{tab.icon}</span>
               <span className="sidebar-label">{tab.label}</span>
             </button>
           ))}
         </nav>
-
+        
         <div className="sidebar-footer">
           <div className="sidebar-stats">
             <div className="stat-item">
@@ -620,27 +547,31 @@ function App() {
               <span>{savedEvents.length}</span>
               <span>Saved</span>
             </div>
+            {user && (
+              <div className="stat-item">
+                <span>👤</span>
+                <span>{user.name?.split(' ')[0]}</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       {/* Main Content */}
       <div className="main-content">
+        {/* Top Navbar */}
         <div className="top-navbar">
           <h1>🌱 Urban Harvest Hub</h1>
           <div className="nav-actions">
             <button className="dark-toggle" onClick={toggleTheme}>
-              {darkMode ? "☀️" : "🌙"}
+              {darkMode ? '☀️' : '🌙'}
             </button>
             {user ? (
               <div className="user-badge">
-                <span>👤 {user.name.split(" ")[0]}</span>
+                <span>👤 {user.name?.split(' ')[0]}</span>
               </div>
             ) : (
-              <button
-                className="auth-nav-btn"
-                onClick={() => setShowAuthModal(true)}
-              >
+              <button className="auth-nav-btn" onClick={() => setShowAuthModal(true)}>
                 Login
               </button>
             )}
@@ -648,6 +579,9 @@ function App() {
         </div>
 
         <div className="container">
+          {/* Weather Widget - Only show on events tab */}
+          {activeTab === 'events' && <WeatherWidget />}
+          
           <div className="actions">
             <button onClick={requestNotifications} className="action-btn">
               🔔 Enable Notifications
@@ -662,24 +596,27 @@ function App() {
         </div>
       </div>
 
-      {/* Mobile Bottom Nav */}
-      <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />
+      {/* Mobile Bottom Navigation */}
+      <BottomNav activeTab={activeTab} setActiveTab={(tab) => {
+        setSelectedEvent(null);
+        setActiveTab(tab);
+      }} />
 
       {/* Auth Modal */}
       {showAuthModal && (
-        <AuthModal
-          API_URL={API_URL}
-          onLogin={handleLogin}
-          onClose={() => setShowAuthModal(false)}
+        <AuthModal 
+          API_URL={API_URL} 
+          onLogin={handleLogin} 
+          onClose={() => setShowAuthModal(false)} 
         />
       )}
 
       {/* Toast Notifications */}
       {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
+        <Toast 
+          message={toast.message} 
+          type={toast.type} 
+          onClose={() => setToast(null)} 
         />
       )}
     </div>

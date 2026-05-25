@@ -385,4 +385,112 @@ router.delete('/events/:eventId', authenticateToken, async (req, res) => {
   }
 });
 
+// ============ BOOKING CRUD ============
+
+// Book an event
+router.post('/bookings/:eventId', authenticateToken, async (req, res) => {
+    const eventId = parseInt(req.params.eventId);
+    const { tickets = 1 } = req.body;
+    
+    try {
+        // Check if already booked
+        const [existing] = await pool.execute(
+            'SELECT * FROM event_bookings WHERE user_id = ? AND event_id = ?',
+            [req.user.id, eventId]
+        );
+        
+        if (existing.length > 0) {
+            return res.status(409).json({ success: false, error: 'Already booked this event' });
+        }
+        
+        await pool.execute(
+            'INSERT INTO event_bookings (user_id, event_id, tickets) VALUES (?, ?, ?)',
+            [req.user.id, eventId, tickets]
+        );
+        
+        // Log activity
+        await pool.execute(
+            'INSERT INTO user_activities (user_id, action_type, event_id, details) VALUES (?, ?, ?, ?)',
+            [req.user.id, 'booking', eventId, JSON.stringify({ tickets })]
+        );
+        
+        res.json({ success: true, message: 'Event booked successfully!' });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get user's bookings
+router.get('/bookings', authenticateToken, async (req, res) => {
+    try {
+        const [rows] = await pool.execute(
+            `SELECT b.*, e.title, e.date, e.image_url, e.location_lat, e.location_lng 
+             FROM event_bookings b 
+             JOIN events e ON b.event_id = e.id 
+             WHERE b.user_id = ? 
+             ORDER BY b.booking_date DESC`,
+            [req.user.id]
+        );
+        res.json({ success: true, bookings: rows });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Cancel booking
+router.delete('/bookings/:eventId', authenticateToken, async (req, res) => {
+    const eventId = parseInt(req.params.eventId);
+    
+    try {
+        await pool.execute(
+            'DELETE FROM event_bookings WHERE user_id = ? AND event_id = ?',
+            [req.user.id, eventId]
+        );
+        res.json({ success: true, message: 'Booking cancelled' });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ============ ADMIN: Get all users (admin only) ============
+router.get('/admin/users', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const [rows] = await pool.execute(
+            'SELECT id, email, name, created_at, is_admin FROM users'
+        );
+        res.json({ success: true, users: rows });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ============ ADMIN: Get all events with booking count ============
+router.get('/admin/events', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const [rows] = await pool.execute(
+            `SELECT e.*, COUNT(b.id) as booking_count 
+             FROM events e 
+             LEFT JOIN event_bookings b ON e.id = b.event_id 
+             GROUP BY e.id 
+             ORDER BY e.date ASC`
+        );
+        res.json({ success: true, events: rows });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ============ ADMIN: Delete any event ============
+router.delete('/admin/events/:eventId', authenticateToken, requireAdmin, async (req, res) => {
+    const eventId = parseInt(req.params.eventId);
+    
+    try {
+        await pool.execute('DELETE FROM event_bookings WHERE event_id = ?', [eventId]);
+        await pool.execute('DELETE FROM events WHERE id = ?', [eventId]);
+        res.json({ success: true, message: 'Event deleted successfully' });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 export default router;

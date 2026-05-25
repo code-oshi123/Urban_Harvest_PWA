@@ -4,6 +4,7 @@ export default function BottomNav({ activeTab, setActiveTab }) {
   const tabs = [
   { id: 'events', label: 'Events', icon: '🌱' },
   { id: 'nearby', label: 'Nearby', icon: '📍' },
+  { id: 'bookings', label: 'Bookings', icon: '📅' },
   { id: 'saved', label: 'Saved', icon: '❤️' },
   { id: 'manage', label: 'Manage', icon: '📝' },
   { id: 'profile', label: 'Profile', icon: '👤' }
