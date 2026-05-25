@@ -385,7 +385,7 @@ router.delete('/events/:eventId', authenticateToken, async (req, res) => {
   }
 });
 
-// ============ BOOKING CRUD ============
+// ============ BOOKING CRUD for admin ============
 
 // Book an event
 router.post('/bookings/:eventId', authenticateToken, async (req, res) => {

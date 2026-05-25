@@ -5,6 +5,7 @@ import './MyBookings.css';
 export default function MyBookings({ API_URL }) {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [cancelling, setCancelling] = useState({});
 
   useEffect(() => {
     fetchBookings();
@@ -23,7 +24,7 @@ export default function MyBookings({ API_URL }) {
       });
       setBookings(res.data.bookings || []);
     } catch (error) {
-      console.error('Failed to fetch bookings');
+      console.error('Failed to fetch bookings:', error);
     } finally {
       setLoading(false);
     }
@@ -33,21 +34,36 @@ export default function MyBookings({ API_URL }) {
     const token = localStorage.getItem('token');
     if (!token) return;
 
-    if (window.confirm('Cancel this booking?')) {
-      try {
-        await axios.delete(`${API_URL}/auth/bookings/${eventId}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        fetchBookings();
-        alert('Booking cancelled');
-      } catch (error) {
-        alert('Failed to cancel');
-      }
+    if (!window.confirm('Are you sure you want to cancel this booking?')) return;
+
+    setCancelling(prev => ({ ...prev, [eventId]: true }));
+
+    try {
+      await axios.delete(`${API_URL}/auth/bookings/${eventId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      // Remove from local state
+      setBookings(bookings.filter(b => b.event_id !== eventId));
+      alert('✅ Booking cancelled successfully');
+    } catch (error) {
+      alert('❌ Failed to cancel booking');
+    } finally {
+      setCancelling(prev => ({ ...prev, [eventId]: false }));
     }
   };
 
-  if (loading) return <div className="loading">Loading your bookings...</div>;
+  const formatDate = (dateString) => {
+    const options = { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric',
+      weekday: 'short'
+    };
+    return new Date(dateString).toLocaleDateString('en-US', options);
+  };
 
+  // Not logged in
   if (!localStorage.getItem('token')) {
     return (
       <div className="bookings-empty">
@@ -58,34 +74,83 @@ export default function MyBookings({ API_URL }) {
     );
   }
 
+  // Loading state
+  if (loading) {
+    return (
+      <div className="bookings-loading">
+        <div className="loading-spinner"></div>
+        <p>Loading your bookings...</p>
+      </div>
+    );
+  }
+
+  // No bookings
   if (bookings.length === 0) {
     return (
       <div className="bookings-empty">
         <div className="empty-icon">📅</div>
         <h3>No Bookings Yet</h3>
         <p>Browse events and click "Book Now" to secure your spot!</p>
+        <button 
+          className="browse-events-btn"
+          onClick={() => window.location.href = '/events'}
+        >
+          🌱 Browse Events
+        </button>
       </div>
     );
   }
 
   return (
     <div className="my-bookings">
-      <h2>📅 My Bookings ({bookings.length})</h2>
+      <div className="bookings-header">
+        <h2>📅 My Bookings</h2>
+        <span className="bookings-count">{bookings.length} {bookings.length === 1 ? 'Booking' : 'Bookings'}</span>
+      </div>
+
       <div className="bookings-list">
         {bookings.map(booking => (
           <div key={booking.id} className="booking-card">
-            <img src={booking.image_url || 'https://via.placeholder.com/100'} alt={booking.title} />
-            <div className="booking-info">
-              <h4>{booking.title}</h4>
-              <p>📅 {new Date(booking.date).toLocaleDateString()}</p>
-              <p>🎫 {booking.tickets} ticket(s)</p>
-              <p>📅 Booked on: {new Date(booking.booking_date).toLocaleDateString()}</p>
+            <div className="booking-image">
+              <img 
+                src={booking.image_url || 'https://images.unsplash.com/photo-1466692476868-aef1dfb1e735?w=150'} 
+                alt={booking.title}
+                onError={(e) => {
+                  e.target.src = 'https://images.unsplash.com/photo-1466692476868-aef1dfb1e735?w=150';
+                }}
+              />
             </div>
-            <button className="cancel-booking" onClick={() => cancelBooking(booking.event_id)}>
-              Cancel
-            </button>
+            
+            <div className="booking-info">
+              <h3 className="booking-title">{booking.title}</h3>
+              <div className="booking-details">
+                <p className="booking-date">
+                  📅 {formatDate(booking.date)}
+                </p>
+                <p className="booking-tickets">
+                  🎫 {booking.tickets} {booking.tickets === 1 ? 'ticket' : 'tickets'}
+                </p>
+                <p className="booking-booked-date">
+                  📌 Booked on: {new Date(booking.booking_date).toLocaleDateString()}
+                </p>
+              </div>
+            </div>
+            
+            <div className="booking-actions">
+              <button 
+                className="cancel-booking-btn"
+                onClick={() => cancelBooking(booking.event_id)}
+                disabled={cancelling[booking.event_id]}
+              >
+                {cancelling[booking.event_id] ? '⏳ Cancelling...' : '❌ Cancel'}
+              </button>
+            </div>
           </div>
         ))}
+      </div>
+
+      <div className="bookings-footer">
+        <p>💡 Tip: Cancelled bookings can be rebooked later if spots are available.</p>
       </div>
     </div>
   );
