@@ -12,10 +12,12 @@ import MyBookings from './components/MyBookings';
 import WeatherWidget from './components/WeatherWidget';
 import Toast from './components/Toast';
 import LoadingSkeleton from './components/LoadingSkeleton';
-import { initDB, saveEventsOffline, getEventsOffline, processQueuedActions } from './utils/db';
+import { initDB, saveEventsOffline, getEventsOffline } from './utils/db';
 import './App.css';
 
-const API_URL = https://urban-harvest-pwa-backend.onrender.com/api || 'http://localhost:5000/api';
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  "https://urban-harvest-pwa-backend.onrender.com/api";
 
 function App() {
   // State Management
