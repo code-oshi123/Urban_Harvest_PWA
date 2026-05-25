@@ -2,11 +2,12 @@ import React from 'react';
 
 export default function BottomNav({ activeTab, setActiveTab }) {
   const tabs = [
-    { id: 'events', label: 'Events', icon: '🌱', activeIcon: '🌿' },
-    { id: 'nearby', label: 'Nearby', icon: '📍', activeIcon: '📍' },
-    { id: 'saved', label: 'Saved', icon: '🤍', activeIcon: '❤️' },
-    { id: 'profile', label: 'Profile', icon: '👤', activeIcon: '👤' }
-  ];
+  { id: 'events', label: 'Events', icon: '🌱' },
+  { id: 'nearby', label: 'Nearby', icon: '📍' },
+  { id: 'saved', label: 'Saved', icon: '❤️' },
+  { id: 'manage', label: 'Manage', icon: '📝' },
+  { id: 'profile', label: 'Profile', icon: '👤' }
+];
 
   return (
     <>
