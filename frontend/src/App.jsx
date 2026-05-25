@@ -15,7 +15,7 @@ import LoadingSkeleton from './components/LoadingSkeleton';
 import { initDB, saveEventsOffline, getEventsOffline, processQueuedActions } from './utils/db';
 import './App.css';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_URL = https://urban-harvest-pwa-backend.onrender.com/api || 'http://localhost:5000/api';
 
 function App() {
   // State Management
