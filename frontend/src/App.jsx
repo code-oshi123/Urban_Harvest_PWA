@@ -60,21 +60,21 @@ function App() {
   };
 
   // Clear all cached data
-const clearCache = async () => {
-  if (window.confirm('Clear cached events and refresh data?')) {
-    // Clear IndexedDB
-    const request = indexedDB.deleteDatabase('UrbanHarvestDB');
-    request.onsuccess = () => {
-      console.log('Cache cleared successfully');
-      showToast('Cache cleared! Refreshing data...', 'success');
-      fetchEvents(true);
-    };
-    request.onerror = () => {
-      console.log('Failed to clear cache');
-      showToast('Failed to clear cache', 'error');
-    };
-  }
-};
+  const clearCache = async () => {
+    if (window.confirm("Clear cached events and refresh data?")) {
+      // Clear IndexedDB
+      const request = indexedDB.deleteDatabase("UrbanHarvestDB");
+      request.onsuccess = () => {
+        console.log("Cache cleared successfully");
+        showToast("Cache cleared! Refreshing data...", "success");
+        fetchEvents(true);
+      };
+      request.onerror = () => {
+        console.log("Failed to clear cache");
+        showToast("Failed to clear cache", "error");
+      };
+    }
+  };
 
   // ============ EVENT CRUD OPERATIONS ============
 
@@ -721,6 +721,22 @@ const clearCache = async () => {
 
           <button onClick={refreshEvents} className="action-btn refresh-btn">
             🔄 Refresh Events
+          </button>
+
+          <button
+            onClick={async () => {
+              // Clear IndexedDB
+              indexedDB.deleteDatabase("UrbanHarvestDB");
+              // Clear Cache Storage
+              const cacheNames = await caches.keys();
+              await Promise.all(cacheNames.map((name) => caches.delete(name)));
+              // Reload
+              window.location.reload();
+            }}
+            className="action-btn"
+            style={{ background: "#dc3545" }}
+          >
+            🗑️ Clear All Cache & Reload
           </button>
 
           {isOffline && <OfflineToast />}
