@@ -15,6 +15,12 @@ export default function WeatherWidget() {
   const defaultLat = 6.9271;
   const defaultLon = 79.8612;
 
+  const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+const weatherApiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m&timezone=auto`;
+const proxiedUrl = `${CORS_PROXY}${encodeURIComponent(weatherApiUrl)}`;
+
+const response = await fetch(proxiedUrl);
+
   const fetchWeather = async (lat, lon) => {
     if (!isMountedRef.current) return;
 
