@@ -26,6 +26,30 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Weather proxy endpoint
+app.get('/api/weather', async (req, res) => {
+    const { latitude, longitude } = req.query;
+    if (!latitude || !longitude) {
+        return res.status(400).json({ error: 'Latitude and longitude are required' });
+    }
+
+    try {
+        const response = await fetch(
+            `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&timezone=auto`
+        );
+
+        if (!response.ok) {
+            throw new Error(`Open-Meteo API returned status ${response.status}`);
+        }
+
+        const data = await response.json();
+        res.json(data);
+    } catch (error) {
+        console.error('Weather proxy error:', error);
+        res.status(500).json({ error: 'Failed to fetch weather from provider' });
+    }
+});
+
 // Routes
 app.use('/api/events', eventsRouter);
 

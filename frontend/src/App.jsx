@@ -728,7 +728,7 @@ function App() {
 
         <div className="container">
           {/* Weather Widget - Only show on events tab */}
-          {activeTab === "events" && <WeatherWidget />}
+          {activeTab === "events" && <WeatherWidget API_URL={API_URL} />}
 
           <div className="actions">
             <button onClick={requestNotifications} className="action-btn">

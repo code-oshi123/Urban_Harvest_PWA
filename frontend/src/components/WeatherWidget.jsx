@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import "./WeatherWidget.css";
 
-export default function WeatherWidget() {
+export default function WeatherWidget({ API_URL }) {
   const [weather, setWeather] = useState(null);
   const [loading, setLoading] = useState(false);
   const [location, setLocation] = useState(null);
@@ -38,11 +38,12 @@ export default function WeatherWidget() {
       }
     }, 10000);
 
+    const url = API_URL
+      ? `${API_URL}/weather?latitude=${lat}&longitude=${lon}`
+      : `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&timezone=auto`;
+
     try {
-      const response = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&timezone=auto`,
-        { signal: controller.signal }
-      );
+      const response = await fetch(url, { signal: controller.signal });
 
       clearTimeout(timeoutId);
 
