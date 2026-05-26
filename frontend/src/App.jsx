@@ -1,19 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import EventList from './components/EventList';
-import EventDetail from './components/EventDetail';
-import SearchFilter from './components/SearchFilter';
-import OfflineToast from './components/OfflineToast';
-import BottomNav from './components/BottomNav';
-import AuthModal from './components/AuthModal';
-import ProfilePage from './components/ProfilePage';
-import EventManagement from './components/EventManagement';
-import MyBookings from './components/MyBookings';
-import WeatherWidget from './components/WeatherWidget';
-import Toast from './components/Toast';
-import LoadingSkeleton from './components/LoadingSkeleton';
-import { initDB, saveEventsOffline, getEventsOffline } from './utils/db';
-import './App.css';
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+import EventList from "./components/EventList";
+import EventDetail from "./components/EventDetail";
+import SearchFilter from "./components/SearchFilter";
+import OfflineToast from "./components/OfflineToast";
+import BottomNav from "./components/BottomNav";
+import AuthModal from "./components/AuthModal";
+import ProfilePage from "./components/ProfilePage";
+import EventManagement from "./components/EventManagement";
+import MyBookings from "./components/MyBookings";
+import WeatherWidget from "./components/WeatherWidget";
+import Toast from "./components/Toast";
+import LoadingSkeleton from "./components/LoadingSkeleton";
+import { initDB, saveEventsOffline, getEventsOffline } from "./utils/db";
+import "./App.css";
 
 const API_URL =
   import.meta.env.VITE_API_URL ||
@@ -26,8 +26,10 @@ function App() {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isOffline, setIsOffline] = useState(false);
-  const [darkMode, setDarkMode] = useState(localStorage.getItem('theme') === 'dark');
-  const [activeTab, setActiveTab] = useState('events');
+  const [darkMode, setDarkMode] = useState(
+    localStorage.getItem("theme") === "dark",
+  );
+  const [activeTab, setActiveTab] = useState("events");
   const [user, setUser] = useState(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
@@ -36,8 +38,8 @@ function App() {
   const [userBookings, setUserBookings] = useState([]);
 
   // ============ HELPER FUNCTIONS ============
-  
-  const showToast = (message, type = 'info') => {
+
+  const showToast = (message, type = "info") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
@@ -45,128 +47,205 @@ function App() {
   // Calculate distance between two points (Haversine formula)
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
     const R = 6371;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   };
 
+  // Clear all cached data
+const clearCache = async () => {
+  if (window.confirm('Clear cached events and refresh data?')) {
+    // Clear IndexedDB
+    const request = indexedDB.deleteDatabase('UrbanHarvestDB');
+    request.onsuccess = () => {
+      console.log('Cache cleared successfully');
+      showToast('Cache cleared! Refreshing data...', 'success');
+      fetchEvents(true);
+    };
+    request.onerror = () => {
+      console.log('Failed to clear cache');
+      showToast('Failed to clear cache', 'error');
+    };
+  }
+};
+
   // ============ EVENT CRUD OPERATIONS ============
-  
-  const fetchEvents = async () => {
+
+  // ============ FETCH EVENTS WITH FORCE REFRESH ============
+
+  const fetchEvents = async (forceRefresh = false) => {
     setLoading(true);
-    
+
+    // Check if we should use cache
+    const useCache = !forceRefresh && isOffline;
+
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-      
-      const res = await axios.get(`${API_URL}/events`, {
-        signal: controller.signal,
-        timeout: 8000
-      });
-      
-      clearTimeout(timeoutId);
-      
-      const eventsData = res.data.data;
-      setEvents(eventsData);
-      setFilteredEvents(eventsData);
-      await saveEventsOffline(eventsData);
-      setIsOffline(false);
-      
-      showToast(`🌱 Loaded ${eventsData.length} sustainable events!`, 'success');
-      
+      // Always try network first when online
+      if (!useCache && navigator.onLine) {
+        console.log("🌐 Fetching fresh events from network...");
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+        const res = await axios.get(`${API_URL}/events`, {
+          signal: controller.signal,
+          timeout: 10000,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (res.data && res.data.data) {
+          const eventsData = res.data.data;
+          console.log(`✅ Loaded ${eventsData.length} events from network`);
+
+          setEvents(eventsData);
+          setFilteredEvents(eventsData);
+
+          // Update cache with fresh data
+          await saveEventsOffline(eventsData);
+          await cacheAPIResponse("/events", eventsData);
+
+          setIsOffline(false);
+          showToast(
+            `🌱 Loaded ${eventsData.length} sustainable events!`,
+            "success",
+          );
+        }
+      }
+      // Fallback to cache when offline or network fails
+      else {
+        console.log("📡 Loading events from cache...");
+        const cachedEvents = await getEventsOffline();
+
+        if (cachedEvents && cachedEvents.length > 0) {
+          console.log(`✅ Loaded ${cachedEvents.length} events from cache`);
+          setEvents(cachedEvents);
+          setFilteredEvents(cachedEvents);
+
+          if (!navigator.onLine) {
+            setIsOffline(true);
+            showToast(
+              `📡 Offline mode - showing ${cachedEvents.length} cached events`,
+              "info",
+            );
+          }
+        } else {
+          console.log("❌ No cached events found");
+          setEvents([]);
+          setFilteredEvents([]);
+          showToast(
+            "❌ No events available. Please check your connection.",
+            "error",
+          );
+        }
+      }
     } catch (err) {
-      console.log('Network failed, loading from cache...');
+      console.log("Network error, loading from cache...");
+
+      // Try cache as last resort
       const cachedEvents = await getEventsOffline();
-      
       if (cachedEvents && cachedEvents.length > 0) {
         setEvents(cachedEvents);
         setFilteredEvents(cachedEvents);
-        showToast(`📡 Offline mode - showing ${cachedEvents.length} cached events`, 'info');
+        setIsOffline(true);
+        showToast(
+          `📡 Offline - showing ${cachedEvents.length} cached events`,
+          "warning",
+        );
       } else {
-        showToast('❌ Unable to load events. Please check your connection.', 'error');
+        showToast(
+          "❌ Unable to load events. Please check your connection.",
+          "error",
+        );
       }
     } finally {
       setLoading(false);
     }
   };
 
+  // Add a manual refresh button
+  const refreshEvents = () => {
+    showToast("🔄 Refreshing events...", "info");
+    fetchEvents(true);
+  };
+
   // Save event to database
   const saveEventToDatabase = async (eventId) => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem("token");
     if (!token) {
-      showToast('Please login to save events', 'warning');
+      showToast("Please login to save events", "warning");
       setShowAuthModal(true);
       return false;
     }
-    
+
     try {
       await axios.post(
         `${API_URL}/auth/saved-events/${eventId}`,
         {},
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
       return true;
     } catch (error) {
-      console.error('Save error:', error);
-      showToast('Failed to save event', 'error');
+      console.error("Save error:", error);
+      showToast("Failed to save event", "error");
       return false;
     }
   };
 
   // Remove saved event from database
   const unsaveEventFromDatabase = async (eventId) => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem("token");
     if (!token) return false;
-    
+
     try {
-      await axios.delete(
-        `${API_URL}/auth/saved-events/${eventId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await axios.delete(`${API_URL}/auth/saved-events/${eventId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       return true;
     } catch (error) {
-      console.error('Unsave error:', error);
+      console.error("Unsave error:", error);
       return false;
     }
   };
 
   // Load saved events from database
   const loadSavedEventsFromDatabase = async () => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem("token");
     if (!token) return [];
-    
+
     try {
-      const res = await axios.get(
-        `${API_URL}/auth/saved-events`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const savedIds = res.data.data.map(event => event.id);
+      const res = await axios.get(`${API_URL}/auth/saved-events`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const savedIds = res.data.data.map((event) => event.id);
       setSavedEvents(savedIds);
       return savedIds;
     } catch (error) {
-      console.error('Load saved events error:', error);
+      console.error("Load saved events error:", error);
       return [];
     }
   };
 
   // Load user bookings
   const loadUserBookings = async () => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem("token");
     if (!token) return [];
-    
+
     try {
-      const res = await axios.get(
-        `${API_URL}/auth/bookings`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const res = await axios.get(`${API_URL}/auth/bookings`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       setUserBookings(res.data.bookings || []);
       return res.data.bookings;
     } catch (error) {
-      console.error('Load bookings error:', error);
+      console.error("Load bookings error:", error);
       return [];
     }
   };
@@ -174,21 +253,21 @@ function App() {
   // Toggle save event
   const toggleSave = async (eventId, e) => {
     e.stopPropagation();
-    
+
     const isCurrentlySaved = savedEvents.includes(eventId);
-    
+
     if (isCurrentlySaved) {
       const success = await unsaveEventFromDatabase(eventId);
       if (success) {
-        setSavedEvents(savedEvents.filter(id => id !== eventId));
-        showToast('Removed from your saved events', 'info');
+        setSavedEvents(savedEvents.filter((id) => id !== eventId));
+        showToast("Removed from your saved events", "info");
       }
     } else {
       const success = await saveEventToDatabase(eventId);
       if (success) {
         setSavedEvents([...savedEvents, eventId]);
-        showToast('Event saved to your collection! ❤️', 'success');
-        
+        showToast("Event saved to your collection! ❤️", "success");
+
         if (window.navigator && window.navigator.vibrate) {
           window.navigator.vibrate(50);
         }
@@ -197,118 +276,136 @@ function App() {
   };
 
   // ============ USER LOCATION & WEATHER ============
-  
+
   const getLocation = () => {
-    if ('geolocation' in navigator) {
-      showToast('📍 Getting your location...', 'info');
-      
+    if ("geolocation" in navigator) {
+      showToast("📍 Getting your location...", "info");
+
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const location = {
             lat: pos.coords.latitude,
-            lng: pos.coords.longitude
+            lng: pos.coords.longitude,
           };
           setUserLocation(location);
-          
-          const eventsWithDistance = events.map(event => ({
+
+          const eventsWithDistance = events.map((event) => ({
             ...event,
             distance: calculateDistance(
-              location.lat, location.lng,
+              location.lat,
+              location.lng,
               event.location_lat || location.lat + (Math.random() - 0.5) * 0.1,
-              event.location_lng || location.lng + (Math.random() - 0.5) * 0.1
-            )
+              event.location_lng || location.lng + (Math.random() - 0.5) * 0.1,
+            ),
           }));
-          
-          const sorted = [...eventsWithDistance].sort((a, b) => a.distance - b.distance);
+
+          const sorted = [...eventsWithDistance].sort(
+            (a, b) => a.distance - b.distance,
+          );
           setFilteredEvents(sorted);
-          
+
           const closest = sorted[0];
           if (closest) {
             showToast(
               `📍 Found you! Closest event is ${closest.distance.toFixed(1)}km away - ${closest.title}`,
-              'success'
+              "success",
             );
           }
-          
-          setActiveTab('nearby');
-          
+
+          setActiveTab("nearby");
+
           if (window.navigator && window.navigator.vibrate) {
             window.navigator.vibrate(100);
           }
         },
         (err) => {
-          console.error('Location error:', err);
-          showToast('❌ Unable to get location. Please enable location access.', 'error');
-        }
+          console.error("Location error:", err);
+          showToast(
+            "❌ Unable to get location. Please enable location access.",
+            "error",
+          );
+        },
       );
     } else {
-      showToast('❌ Geolocation is not supported in your browser', 'error');
+      showToast("❌ Geolocation is not supported in your browser", "error");
     }
   };
 
   // ============ NOTIFICATIONS ============
-  
+
   const requestNotifications = async () => {
-    if ('Notification' in window) {
+    if ("Notification" in window) {
       const permission = await Notification.requestPermission();
-      if (permission === 'granted') {
+      if (permission === "granted") {
         const registration = await navigator.serviceWorker.ready;
-        registration.showNotification('✨ Notifications Enabled!', {
-          body: 'You will now receive updates about new events and reminders',
-          icon: '/icons/android-chrome-192x192.png',
-          badge: '/icons/favicon-32x32.png',
-          vibrate: [200, 100, 200]
+        registration.showNotification("✨ Notifications Enabled!", {
+          body: "You will now receive updates about new events and reminders",
+          icon: "/icons/android-chrome-192x192.png",
+          badge: "/icons/favicon-32x32.png",
+          vibrate: [200, 100, 200],
         });
-        showToast('🔔 Notifications enabled! You\'ll get event updates.', 'success');
+        showToast(
+          "🔔 Notifications enabled! You'll get event updates.",
+          "success",
+        );
       } else {
-        showToast('❌ Notifications blocked. You can enable them in browser settings.', 'warning');
+        showToast(
+          "❌ Notifications blocked. You can enable them in browser settings.",
+          "warning",
+        );
       }
     }
   };
 
   // ============ AUTHENTICATION ============
-  
+
   const handleLogin = (userData) => {
     setUser(userData);
     setShowAuthModal(false);
-    showToast(`🎉 Welcome ${userData.name}! You're now logged in.`, 'success');
-    
+    showToast(`🎉 Welcome ${userData.name}! You're now logged in.`, "success");
+
     loadSavedEventsFromDatabase();
     loadUserBookings();
-    
+
     if (window.navigator && window.navigator.vibrate) {
       window.navigator.vibrate([100, 50, 100]);
     }
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
     setUser(null);
     setSavedEvents([]);
     setUserBookings([]);
-    showToast('👋 You have been logged out. Come back soon!', 'info');
-    setActiveTab('events');
+    showToast("👋 You have been logged out. Come back soon!", "info");
+    setActiveTab("events");
   };
 
   const handleProfileUpdate = (updatedUser) => {
     setUser(updatedUser);
-    showToast('Profile updated successfully!', 'success');
+    showToast("Profile updated successfully!", "success");
   };
 
   // ============ THEME ============
-  
+
   const toggleTheme = () => {
     setDarkMode(!darkMode);
-    showToast(darkMode ? '☀️ Light mode enabled' : '🌙 Dark mode enabled', 'info');
+    showToast(
+      darkMode ? "☀️ Light mode enabled" : "🌙 Dark mode enabled",
+      "info",
+    );
   };
 
   // ============ EFFECTS ============
-  
+
   // Apply theme
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
-    localStorage.setItem('theme', darkMode ? 'dark' : 'light');
+    document.documentElement.setAttribute(
+      "data-theme",
+      darkMode ? "dark" : "light",
+    );
+    localStorage.setItem("theme", darkMode ? "dark" : "light");
   }, [darkMode]);
 
   // Online/offline detection
@@ -316,74 +413,80 @@ function App() {
     const checkOnlineStatus = () => {
       setIsOffline(!navigator.onLine);
       if (navigator.onLine) {
-        showToast('Back online! Refreshing data...', 'success');
+        showToast("Back online! Refreshing data...", "success");
         fetchEvents();
         if (user) {
           loadSavedEventsFromDatabase();
           loadUserBookings();
         }
       } else {
-        showToast('You are offline. Viewing cached content.', 'warning');
+        showToast("You are offline. Viewing cached content.", "warning");
       }
     };
 
     checkOnlineStatus();
-    window.addEventListener('online', checkOnlineStatus);
-    window.addEventListener('offline', checkOnlineStatus);
+    window.addEventListener("online", checkOnlineStatus);
+    window.addEventListener("offline", checkOnlineStatus);
 
     return () => {
-      window.removeEventListener('online', checkOnlineStatus);
-      window.removeEventListener('offline', checkOnlineStatus);
+      window.removeEventListener("online", checkOnlineStatus);
+      window.removeEventListener("offline", checkOnlineStatus);
     };
   }, []);
 
   // Initialize app
   useEffect(() => {
     initDB();
-    
-    const savedUser = localStorage.getItem('user');
-    const token = localStorage.getItem('token');
-    
+
+    const savedUser = localStorage.getItem("user");
+    const token = localStorage.getItem("token");
+
     if (savedUser && token) {
       setUser(JSON.parse(savedUser));
       loadSavedEventsFromDatabase();
       loadUserBookings();
     }
-    
+
     fetchEvents();
   }, []);
 
   // ============ RENDER CONTENT BASED ON TAB ============
-  
+
   const renderContent = () => {
     if (loading && events.length === 0) {
       return <LoadingSkeleton />;
     }
 
     switch (activeTab) {
-      case 'events':
+      case "events":
         return (
           <>
-            <SearchFilter events={events} setFilteredEvents={setFilteredEvents} />
+            <SearchFilter
+              events={events}
+              setFilteredEvents={setFilteredEvents}
+            />
             {selectedEvent ? (
-              <EventDetail event={selectedEvent} onBack={() => setSelectedEvent(null)} />
+              <EventDetail
+                event={selectedEvent}
+                onBack={() => setSelectedEvent(null)}
+              />
             ) : (
-              <EventList 
-                events={filteredEvents} 
-                loading={loading} 
+              <EventList
+                events={filteredEvents}
+                loading={loading}
                 onSelect={setSelectedEvent}
                 savedEvents={savedEvents}
                 onSave={toggleSave}
                 API_URL={API_URL}
                 user={user}
-                isAdmin={user?.email === 'admin1@gmail.com'}
+                isAdmin={user?.email === "admin1@gmail.com"}
                 onEventDelete={() => fetchEvents()}
               />
             )}
           </>
         );
-        
-      case 'nearby':
+
+      case "nearby":
         return (
           <div className="nearby-view">
             <div className="nearby-header">
@@ -394,17 +497,22 @@ function App() {
                 </button>
               )}
             </div>
-            
+
             {userLocation && (
               <div className="location-info">
-                <p>📍 Your location: {userLocation.lat.toFixed(4)}, {userLocation.lng.toFixed(4)}</p>
-                <p>🌱 Showing {filteredEvents.length} events sorted by distance</p>
+                <p>
+                  📍 Your location: {userLocation.lat.toFixed(4)},{" "}
+                  {userLocation.lng.toFixed(4)}
+                </p>
+                <p>
+                  🌱 Showing {filteredEvents.length} events sorted by distance
+                </p>
               </div>
             )}
-            
-            <EventList 
-              events={filteredEvents} 
-              loading={loading} 
+
+            <EventList
+              events={filteredEvents}
+              loading={loading}
               onSelect={setSelectedEvent}
               savedEvents={savedEvents}
               onSave={toggleSave}
@@ -412,16 +520,18 @@ function App() {
               userLocation={userLocation}
               API_URL={API_URL}
               user={user}
-              isAdmin={user?.email === 'admin1@gmail.com'}
+              isAdmin={user?.email === "admin1@gmail.com"}
             />
           </div>
         );
-        
-      case 'bookings':
+
+      case "bookings":
         return <MyBookings API_URL={API_URL} />;
-        
-      case 'saved':
-        const savedEventObjects = events.filter(e => savedEvents.includes(e.id));
+
+      case "saved":
+        const savedEventObjects = events.filter((e) =>
+          savedEvents.includes(e.id),
+        );
         return (
           <div className="saved-view">
             <h2>❤️ Saved Events</h2>
@@ -432,21 +542,21 @@ function App() {
                 <p>Click the heart icon on any event to save it for later</p>
               </div>
             ) : (
-              <EventList 
-                events={savedEventObjects} 
-                loading={false} 
+              <EventList
+                events={savedEventObjects}
+                loading={false}
                 onSelect={setSelectedEvent}
                 savedEvents={savedEvents}
                 onSave={toggleSave}
                 API_URL={API_URL}
                 user={user}
-                isAdmin={user?.email === 'admin1@gmail.com'}
+                isAdmin={user?.email === "admin1@gmail.com"}
               />
             )}
           </div>
         );
-        
-      case 'manage':
+
+      case "manage":
         // Check if user is logged in
         if (!user) {
           return (
@@ -454,19 +564,32 @@ function App() {
               <div className="empty-icon">🔒</div>
               <h3>Admin Access Required</h3>
               <p>Please login with admin credentials to manage events</p>
-              <button className="primary-btn" onClick={() => setShowAuthModal(true)}>
+              <button
+                className="primary-btn"
+                onClick={() => setShowAuthModal(true)}
+              >
                 Login as Admin
               </button>
-              <div className="admin-info" style={{ marginTop: '20px', padding: '15px', background: 'var(--bg-card)', borderRadius: '12px' }}>
-                <p style={{ marginBottom: '8px', fontWeight: 'bold' }}>Demo Admin:</p>
+              <div
+                className="admin-info"
+                style={{
+                  marginTop: "20px",
+                  padding: "15px",
+                  background: "var(--bg-card)",
+                  borderRadius: "12px",
+                }}
+              >
+                <p style={{ marginBottom: "8px", fontWeight: "bold" }}>
+                  Demo Admin:
+                </p>
                 <code>admin1@gmail.com / admin123</code>
               </div>
             </div>
           );
         }
-        
+
         // Check if user is admin
-        if (user.email !== 'admin1@gmail.com') {
+        if (user.email !== "admin1@gmail.com") {
           return (
             <div className="empty-state">
               <div className="empty-icon">⛔</div>
@@ -478,19 +601,19 @@ function App() {
             </div>
           );
         }
-        
+
         return (
-          <EventManagement 
-            events={events} 
+          <EventManagement
+            events={events}
             onEventUpdate={fetchEvents}
             API_URL={API_URL}
             user={user}
           />
         );
-        
-      case 'profile':
+
+      case "profile":
         return (
-          <ProfilePage 
+          <ProfilePage
             user={user}
             onLogout={handleLogout}
             API_URL={API_URL}
@@ -499,14 +622,14 @@ function App() {
             onUpdate={handleProfileUpdate}
           />
         );
-        
+
       default:
         return null;
     }
   };
 
   // ============ MAIN RENDER ============
-  
+
   return (
     <div className="app">
       {/* Sidebar for Desktop */}
@@ -515,19 +638,19 @@ function App() {
           <span className="logo-icon">🌱</span>
           <span className="logo-text">HarvestHub</span>
         </div>
-        
+
         <nav className="sidebar-nav">
           {[
-            { id: 'events', label: 'Events', icon: '🌱' },
-            { id: 'nearby', label: 'Nearby', icon: '📍' },
-            { id: 'bookings', label: 'Bookings', icon: '📅' },
-            { id: 'saved', label: 'Saved', icon: '❤️' },
-            { id: 'manage', label: 'Manage', icon: '📝' },
-            { id: 'profile', label: 'Profile', icon: '👤' }
-          ].map(tab => (
+            { id: "events", label: "Events", icon: "🌱" },
+            { id: "nearby", label: "Nearby", icon: "📍" },
+            { id: "bookings", label: "Bookings", icon: "📅" },
+            { id: "saved", label: "Saved", icon: "❤️" },
+            { id: "manage", label: "Manage", icon: "📝" },
+            { id: "profile", label: "Profile", icon: "👤" },
+          ].map((tab) => (
             <button
               key={tab.id}
-              className={`sidebar-item ${activeTab === tab.id ? 'active' : ''}`}
+              className={`sidebar-item ${activeTab === tab.id ? "active" : ""}`}
               onClick={() => {
                 setSelectedEvent(null);
                 setActiveTab(tab.id);
@@ -538,7 +661,7 @@ function App() {
             </button>
           ))}
         </nav>
-        
+
         <div className="sidebar-footer">
           <div className="sidebar-stats">
             <div className="stat-item">
@@ -552,7 +675,7 @@ function App() {
             {user && (
               <div className="stat-item">
                 <span>👤</span>
-                <span>{user.name?.split(' ')[0]}</span>
+                <span>{user.name?.split(" ")[0]}</span>
               </div>
             )}
           </div>
@@ -566,14 +689,17 @@ function App() {
           <h1>🌱 Urban Harvest Hub</h1>
           <div className="nav-actions">
             <button className="dark-toggle" onClick={toggleTheme}>
-              {darkMode ? '☀️' : '🌙'}
+              {darkMode ? "☀️" : "🌙"}
             </button>
             {user ? (
               <div className="user-badge">
-                <span>👤 {user.name?.split(' ')[0]}</span>
+                <span>👤 {user.name?.split(" ")[0]}</span>
               </div>
             ) : (
-              <button className="auth-nav-btn" onClick={() => setShowAuthModal(true)}>
+              <button
+                className="auth-nav-btn"
+                onClick={() => setShowAuthModal(true)}
+              >
                 Login
               </button>
             )}
@@ -582,8 +708,8 @@ function App() {
 
         <div className="container">
           {/* Weather Widget - Only show on events tab */}
-          {activeTab === 'events' && <WeatherWidget />}
-          
+          {activeTab === "events" && <WeatherWidget />}
+
           <div className="actions">
             <button onClick={requestNotifications} className="action-btn">
               🔔 Enable Notifications
@@ -593,32 +719,39 @@ function App() {
             </button>
           </div>
 
+          <button onClick={refreshEvents} className="action-btn refresh-btn">
+            🔄 Refresh Events
+          </button>
+
           {isOffline && <OfflineToast />}
           {renderContent()}
         </div>
       </div>
 
       {/* Mobile Bottom Navigation */}
-      <BottomNav activeTab={activeTab} setActiveTab={(tab) => {
-        setSelectedEvent(null);
-        setActiveTab(tab);
-      }} />
+      <BottomNav
+        activeTab={activeTab}
+        setActiveTab={(tab) => {
+          setSelectedEvent(null);
+          setActiveTab(tab);
+        }}
+      />
 
       {/* Auth Modal */}
       {showAuthModal && (
-        <AuthModal 
-          API_URL={API_URL} 
-          onLogin={handleLogin} 
-          onClose={() => setShowAuthModal(false)} 
+        <AuthModal
+          API_URL={API_URL}
+          onLogin={handleLogin}
+          onClose={() => setShowAuthModal(false)}
         />
       )}
 
       {/* Toast Notifications */}
       {toast && (
-        <Toast 
-          message={toast.message} 
-          type={toast.type} 
-          onClose={() => setToast(null)} 
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
         />
       )}
     </div>

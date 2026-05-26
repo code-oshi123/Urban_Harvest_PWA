@@ -608,3 +608,11 @@ body {
   cursor: pointer;
   font-weight: 600;
 }
+
+.refresh-btn {
+  background: #6c757d !important;
+}
+
+.refresh-btn:hover {
+  background: #5a6268 !important;
+}
