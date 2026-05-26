@@ -83,20 +83,24 @@ function App() {
   const fetchEvents = async (forceRefresh = false) => {
     setLoading(true);
 
-    // Check if we should use cache
-    const useCache = !forceRefresh && isOffline;
+    // Only use cache when the browser is genuinely offline
+    const useCache = !forceRefresh && !navigator.onLine;
 
     try {
       // Always try network first when online
       if (!useCache && navigator.onLine) {
         console.log("🌐 Fetching fresh events from network...");
 
+        // Show a hint if the server may be cold-starting (Render free tier)
+        showToast("⏳ Connecting to server, please wait…", "info");
+
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        // Allow 60 s so Render's free-tier cold-start (≈30-50 s) can complete
+        const timeoutId = setTimeout(() => controller.abort(), 60000);
 
         const res = await axios.get(`${API_URL}/events`, {
           signal: controller.signal,
-          timeout: 10000,
+          timeout: 60000,
         });
 
         clearTimeout(timeoutId);
@@ -112,6 +116,7 @@ function App() {
           await saveEventsOffline(eventsData);
           await cacheAPIResponse("/events", eventsData);
 
+          // We are definitely online now
           setIsOffline(false);
           showToast(
             `🌱 Loaded ${eventsData.length} sustainable events!`,
@@ -119,7 +124,7 @@ function App() {
           );
         }
       }
-      // Fallback to cache when offline or network fails
+      // Fallback to cache when browser is offline
       else {
         console.log("📡 Loading events from cache...");
         const cachedEvents = await getEventsOffline();
@@ -147,23 +152,37 @@ function App() {
         }
       }
     } catch (err) {
-      console.log("Network error, loading from cache...");
+      console.log("Network error, loading from cache...", err?.message);
 
       // Try cache as last resort
       const cachedEvents = await getEventsOffline();
       if (cachedEvents && cachedEvents.length > 0) {
         setEvents(cachedEvents);
         setFilteredEvents(cachedEvents);
-        setIsOffline(true);
-        showToast(
-          `📡 Offline - showing ${cachedEvents.length} cached events`,
-          "warning",
-        );
+        // Only mark offline if the browser itself says so — a backend
+        // timeout does NOT mean the user is offline
+        if (!navigator.onLine) {
+          setIsOffline(true);
+          showToast(
+            `📡 Offline - showing ${cachedEvents.length} cached events`,
+            "warning",
+          );
+        } else {
+          showToast(
+            `⚠️ Server unreachable - showing ${cachedEvents.length} cached events`,
+            "warning",
+          );
+        }
       } else {
-        showToast(
-          "❌ Unable to load events. Please check your connection.",
-          "error",
-        );
+        if (!navigator.onLine) {
+          setIsOffline(true);
+          showToast("📡 You're offline. No cached events found.", "error");
+        } else {
+          showToast(
+            "⚠️ Server is starting up. Please wait a moment and refresh.",
+            "warning",
+          );
+        }
       }
     } finally {
       setLoading(false);
@@ -408,31 +427,32 @@ function App() {
     localStorage.setItem("theme", darkMode ? "dark" : "light");
   }, [darkMode]);
 
-  // Online/offline detection
+  // Online/offline detection — only fires when the network status CHANGES,
+  // not on initial mount (initial load is handled by the init effect below)
   useEffect(() => {
-    const checkOnlineStatus = () => {
-      setIsOffline(!navigator.onLine);
-      if (navigator.onLine) {
-        showToast("Back online! Refreshing data...", "success");
-        fetchEvents();
-        if (user) {
-          loadSavedEventsFromDatabase();
-          loadUserBookings();
-        }
-      } else {
-        showToast("You are offline. Viewing cached content.", "warning");
+    const handleOnline = () => {
+      setIsOffline(false);
+      showToast("✅ Back online! Refreshing data...", "success");
+      fetchEvents(true);
+      if (user) {
+        loadSavedEventsFromDatabase();
+        loadUserBookings();
       }
     };
 
-    checkOnlineStatus();
-    window.addEventListener("online", checkOnlineStatus);
-    window.addEventListener("offline", checkOnlineStatus);
+    const handleOffline = () => {
+      setIsOffline(true);
+      showToast("📡 You are offline. Viewing cached content.", "warning");
+    };
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
 
     return () => {
-      window.removeEventListener("online", checkOnlineStatus);
-      window.removeEventListener("offline", checkOnlineStatus);
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
     };
-  }, []);
+  }, [user]);
 
   // Initialize app
   useEffect(() => {
