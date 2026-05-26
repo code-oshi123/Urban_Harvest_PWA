@@ -11,17 +11,26 @@ export default function WeatherWidget() {
   const defaultLat = 6.9271;
   const defaultLon = 79.8612;
 
+  // Single fetchWeather function (fixed)
   const fetchWeather = async (lat, lon) => {
     setLoading(true);
     setError(null);
 
-    // Using free OpenWeatherMap API (sign up for free key)
-    // For demo, using a free public API
     try {
-      // Free weather API - no API key needed
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
       const response = await fetch(
         `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&timezone=auto`,
+        { signal: controller.signal }
       );
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error("Weather API error");
+      }
+
       const data = await response.json();
 
       if (data.current) {
@@ -48,56 +57,21 @@ export default function WeatherWidget() {
           icon: weatherInfo.icon,
           humidity: data.current.relative_humidity_2m,
           wind: Math.round(data.current.wind_speed_10m),
-          location: location?.name || "Your area",
+          location: location ? "Your area" : "Colombo",
         });
       }
     } catch (err) {
-      console.error("Weather fetch error:", err);
-      setError("Could not load weather data");
-    } finally {
-      setLoading(false);
-    }
-  };
+      console.error("Weather fetch failed:", err.message);
 
-  const fetchWeather = async (lat, lon) => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Add timeout and better error handling
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-      const response = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m&timezone=auto`,
-        { signal: controller.signal },
-      );
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) throw new Error("Weather API error");
-
-      const data = await response.json();
-
-      if (data.current) {
-        setWeather({
-          temp: Math.round(data.current.temperature_2m),
-          condition: "Partly cloudy",
-          icon: "⛅",
-          humidity: data.current.relative_humidity_2m,
-          wind: Math.round(data.current.wind_speed_10m),
-        });
-      }
-    } catch (err) {
-      console.log("Weather fetch failed:", err.message);
+      // fallback weather
       setError("Weather unavailable");
-      // Set fallback weather data
       setWeather({
         temp: "--",
         condition: "Check forecast",
         icon: "🌤️",
         humidity: "--",
         wind: "--",
+        location: "Unavailable",
       });
     } finally {
       setLoading(false);
@@ -107,17 +81,19 @@ export default function WeatherWidget() {
   const getLocationAndWeather = () => {
     if ("geolocation" in navigator) {
       setLoading(true);
+
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const lat = pos.coords.latitude;
           const lon = pos.coords.longitude;
+
           setLocation({ lat, lon });
           fetchWeather(lat, lon);
         },
-        (err) => {
-          console.log("Using default location");
+        () => {
+          console.log("Using default location (Colombo)");
           fetchWeather(defaultLat, defaultLon);
-        },
+        }
       );
     } else {
       fetchWeather(defaultLat, defaultLon);
@@ -136,15 +112,6 @@ export default function WeatherWidget() {
     );
   }
 
-  if (error) {
-    return (
-      <div className="weather-widget error">
-        <span>⚠️</span> {error}
-        <button onClick={getLocationAndWeather}>Retry</button>
-      </div>
-    );
-  }
-
   if (!weather) return null;
 
   return (
@@ -153,12 +120,17 @@ export default function WeatherWidget() {
         <span className="weather-icon">{weather.icon}</span>
         <div className="weather-temp">{weather.temp}°C</div>
       </div>
+
       <div className="weather-condition">{weather.condition}</div>
+
       <div className="weather-details">
         <span>📍 {weather.location}</span>
         <span>💧 {weather.humidity}%</span>
         <span>💨 {weather.wind} km/h</span>
       </div>
+
+      {error && <p className="weather-error">⚠️ {error}</p>}
+
       <button className="weather-refresh" onClick={getLocationAndWeather}>
         🔄 Use my location
       </button>
