@@ -9,12 +9,15 @@ export default function WeatherWidget() {
 
   // Ref to track the active AbortController so we can cancel on unmount
   const controllerRef = useRef(null);
+  const isMountedRef = useRef(true);
 
   // Default location (Colombo)
   const defaultLat = 6.9271;
   const defaultLon = 79.8612;
 
   const fetchWeather = async (lat, lon) => {
+    if (!isMountedRef.current) return;
+
     // Cancel any in-flight request before starting a new one
     if (controllerRef.current) {
       controllerRef.current.abort();
@@ -27,7 +30,11 @@ export default function WeatherWidget() {
     setError(null);
 
     // 10 s — enough for slow connections; 5 s was too aggressive
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const timeoutId = setTimeout(() => {
+      if (isMountedRef.current) {
+        controller.abort();
+      }
+    }, 10000);
 
     try {
       const response = await fetch(
@@ -37,11 +44,15 @@ export default function WeatherWidget() {
 
       clearTimeout(timeoutId);
 
+      if (!isMountedRef.current) return;
+
       if (!response.ok) {
         throw new Error("Weather API error");
       }
 
       const data = await response.json();
+
+      if (!isMountedRef.current) return;
 
       if (data.current) {
         const weatherCodes = {
@@ -73,10 +84,17 @@ export default function WeatherWidget() {
     } catch (err) {
       clearTimeout(timeoutId);
 
-      // Ignore errors caused by intentional cleanup aborts (unmount / new request)
-      if (err.name === "AbortError") {
+      // Ignore errors caused by intentional cleanup aborts (unmount / new request / page navigation)
+      if (
+        err.name === "AbortError" ||
+        err.message === "signal is aborted without reason" ||
+        err.message?.toLowerCase().includes("abort") ||
+        controller.signal.aborted
+      ) {
         return;
       }
+
+      if (!isMountedRef.current) return;
 
       console.error("Weather fetch failed:", err.message);
       setError("Weather unavailable");
@@ -89,7 +107,9 @@ export default function WeatherWidget() {
         location: "Unavailable",
       });
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -98,12 +118,14 @@ export default function WeatherWidget() {
       setLoading(true);
       navigator.geolocation.getCurrentPosition(
         (pos) => {
+          if (!isMountedRef.current) return;
           const lat = pos.coords.latitude;
           const lon = pos.coords.longitude;
           setLocation({ lat, lon });
           fetchWeather(lat, lon);
         },
         () => {
+          if (!isMountedRef.current) return;
           // Permission denied or unavailable — fall back to Colombo
           fetchWeather(defaultLat, defaultLon);
         }
@@ -114,10 +136,12 @@ export default function WeatherWidget() {
   };
 
   useEffect(() => {
+    isMountedRef.current = true;
     getLocationAndWeather();
 
     // Cancel any pending fetch when the component unmounts
     return () => {
+      isMountedRef.current = false;
       if (controllerRef.current) {
         controllerRef.current.abort();
       }
@@ -151,8 +175,12 @@ export default function WeatherWidget() {
 
       {error && <p className="weather-error">⚠️ {error}</p>}
 
-      <button className="weather-refresh" onClick={getLocationAndWeather}>
-        🔄 Use my location
+      <button 
+        className="weather-refresh" 
+        onClick={getLocationAndWeather} 
+        disabled={loading}
+      >
+        {loading ? "⏳ Updating..." : "🔄 Use my location"}
       </button>
     </div>
   );
