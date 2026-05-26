@@ -49,3 +49,11 @@ app.post('/api/notify', async (req, res) => {
   res.json({ success: true });
 });
 startServer();
+
+app.get('/', (req, res) => {
+    res.json({ 
+        message: 'Urban Harvest Hub API is running',
+        status: 'active',
+        endpoints: ['/api/events', '/health']
+    });
+});
