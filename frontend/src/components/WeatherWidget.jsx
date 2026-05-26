@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import "./WeatherWidget.css";
 
 export default function WeatherWidget() {
@@ -7,19 +7,29 @@ export default function WeatherWidget() {
   const [location, setLocation] = useState(null);
   const [error, setError] = useState(null);
 
+  // Ref to track the active AbortController so we can cancel on unmount
+  const controllerRef = useRef(null);
+
   // Default location (Colombo)
   const defaultLat = 6.9271;
   const defaultLon = 79.8612;
 
-  // Single fetchWeather function (fixed)
   const fetchWeather = async (lat, lon) => {
+    // Cancel any in-flight request before starting a new one
+    if (controllerRef.current) {
+      controllerRef.current.abort();
+    }
+
+    const controller = new AbortController();
+    controllerRef.current = controller;
+
     setLoading(true);
     setError(null);
 
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
+    // 10 s — enough for slow connections; 5 s was too aggressive
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
+    try {
       const response = await fetch(
         `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&timezone=auto`,
         { signal: controller.signal }
@@ -35,15 +45,15 @@ export default function WeatherWidget() {
 
       if (data.current) {
         const weatherCodes = {
-          0: { text: "Clear sky", icon: "☀️" },
-          1: { text: "Mainly clear", icon: "🌤️" },
-          2: { text: "Partly cloudy", icon: "⛅" },
-          3: { text: "Overcast", icon: "☁️" },
-          45: { text: "Foggy", icon: "🌫️" },
+          0:  { text: "Clear sky",     icon: "☀️" },
+          1:  { text: "Mainly clear",  icon: "🌤️" },
+          2:  { text: "Partly cloudy", icon: "⛅" },
+          3:  { text: "Overcast",      icon: "☁️" },
+          45: { text: "Foggy",         icon: "🌫️" },
           51: { text: "Light drizzle", icon: "🌧️" },
-          61: { text: "Rain", icon: "🌧️" },
-          71: { text: "Snow", icon: "❄️" },
-          80: { text: "Rain showers", icon: "🌧️" },
+          61: { text: "Rain",          icon: "🌧️" },
+          71: { text: "Snow",          icon: "❄️" },
+          80: { text: "Rain showers",  icon: "🌧️" },
         };
 
         const weatherInfo = weatherCodes[data.current.weather_code] || {
@@ -61,9 +71,14 @@ export default function WeatherWidget() {
         });
       }
     } catch (err) {
-      console.error("Weather fetch failed:", err.message);
+      clearTimeout(timeoutId);
 
-      // fallback weather
+      // Ignore errors caused by intentional cleanup aborts (unmount / new request)
+      if (err.name === "AbortError") {
+        return;
+      }
+
+      console.error("Weather fetch failed:", err.message);
       setError("Weather unavailable");
       setWeather({
         temp: "--",
@@ -81,17 +96,15 @@ export default function WeatherWidget() {
   const getLocationAndWeather = () => {
     if ("geolocation" in navigator) {
       setLoading(true);
-
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const lat = pos.coords.latitude;
           const lon = pos.coords.longitude;
-
           setLocation({ lat, lon });
           fetchWeather(lat, lon);
         },
         () => {
-          console.log("Using default location (Colombo)");
+          // Permission denied or unavailable — fall back to Colombo
           fetchWeather(defaultLat, defaultLon);
         }
       );
@@ -102,6 +115,13 @@ export default function WeatherWidget() {
 
   useEffect(() => {
     getLocationAndWeather();
+
+    // Cancel any pending fetch when the component unmounts
+    return () => {
+      if (controllerRef.current) {
+        controllerRef.current.abort();
+      }
+    };
   }, []);
 
   if (loading && !weather) {

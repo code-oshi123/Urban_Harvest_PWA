@@ -1,5 +1,5 @@
-const CACHE_NAME = 'urban-harvest-v6';
-const API_CACHE_NAME = 'urban-harvest-api-v6';
+const CACHE_NAME = 'urban-harvest-v7';
+const API_CACHE_NAME = 'urban-harvest-api-v7';
 
 // Install event
 self.addEventListener('install', (event) => {
