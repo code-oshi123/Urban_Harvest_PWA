@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './ProfilePage.css';
+import { setLanguage } from '../utils/i18n';
 
-export default function ProfilePage({ user, onLogout, API_URL, savedCount, totalEvents, onUpdate }) {
+export default function ProfilePage({ user, onLogout, API_URL, savedCount, totalEvents, onUpdate, darkMode, setDarkMode }) {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
     name: user?.name || '',
@@ -32,6 +33,13 @@ export default function ProfilePage({ user, onLogout, API_URL, savedCount, total
       });
       if (res.data.settings) {
         setSettings(res.data.settings);
+        if (res.data.settings.theme) {
+          localStorage.setItem('theme', res.data.settings.theme);
+          setDarkMode?.(res.data.settings.theme === 'dark');
+        }
+        if (res.data.settings.language) {
+          setLanguage(res.data.settings.language);
+        }
       }
     } catch (error) {
       console.error('Failed to load settings');
@@ -92,7 +100,13 @@ export default function ProfilePage({ user, onLogout, API_URL, savedCount, total
       setSettings({ ...settings, [key]: value });
       
       if (key === 'theme') {
-        document.documentElement.setAttribute('data-theme', value);
+        localStorage.setItem('theme', value);
+        setDarkMode?.(value === 'dark');
+      }
+
+      if (key === 'language') {
+        setLanguage(value);
+        window.location.reload();
       }
     } catch (error) {
       console.error('Failed to update setting');

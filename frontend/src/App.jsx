@@ -640,6 +640,8 @@ function App() {
             savedCount={savedEvents.length}
             totalEvents={events.length}
             onUpdate={handleProfileUpdate}
+            darkMode={darkMode}
+            setDarkMode={setDarkMode}
           />
         );
 

@@ -290,7 +290,7 @@ router.put('/settings', authenticateToken, async (req, res) => {
                  notifications_enabled = COALESCE(?, notifications_enabled),
                  language = COALESCE(?, language)
              WHERE user_id = ?`,
-            [theme, notifications_enabled, language, req.user.id]
+            [theme ?? null, notifications_enabled ?? null, language ?? null, req.user.id]
         );
         
         res.json({ success: true, message: 'Settings updated' });
