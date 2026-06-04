@@ -2,6 +2,7 @@ import express from 'express';
 import { body, validationResult } from 'express-validator';
 import pool from '../db.js';
 import { hashPassword, verifyPassword, generateToken, authenticateToken } from '../auth.js';
+import { sendPushToUser, broadcastPush } from './notify.js';
 
 const router = express.Router();
 
@@ -214,11 +215,13 @@ router.post('/saved-events/:eventId', authenticateToken, async (req, res) => {
     
     try {
         // Check if event exists
-        const [events] = await pool.execute('SELECT id FROM events WHERE id = ?', [eventId]);
+        const [events] = await pool.execute('SELECT id, title FROM events WHERE id = ?', [eventId]);
         if (events.length === 0) {
             return res.status(404).json({ success: false, error: 'Event not found' });
         }
         
+        const title = events[0].title;
+
         // Save event
         await pool.execute(
             'INSERT INTO user_saved_events (user_id, event_id) VALUES (?, ?)',
@@ -230,6 +233,12 @@ router.post('/saved-events/:eventId', authenticateToken, async (req, res) => {
             'INSERT INTO user_activities (user_id, action_type, event_id, details) VALUES (?, ?, ?, ?)',
             [req.user.id, 'save', eventId, JSON.stringify({ action: 'saved' })]
         );
+
+        // Send push notification to user
+        sendPushToUser(req.user.id, {
+            title: '❤️ Event Saved',
+            body: `You saved "${title}" to your collection.`
+        }).catch(err => console.error('Saved event push failed:', err));
         
         res.json({ success: true, message: 'Event saved' });
     } catch (error) {
@@ -246,6 +255,9 @@ router.delete('/saved-events/:eventId', authenticateToken, async (req, res) => {
     const eventId = parseInt(req.params.eventId);
     
     try {
+        const [events] = await pool.execute('SELECT title FROM events WHERE id = ?', [eventId]);
+        const title = events[0]?.title || 'Event';
+
         await pool.execute(
             'DELETE FROM user_saved_events WHERE user_id = ? AND event_id = ?',
             [req.user.id, eventId]
@@ -256,6 +268,12 @@ router.delete('/saved-events/:eventId', authenticateToken, async (req, res) => {
             'INSERT INTO user_activities (user_id, action_type, event_id, details) VALUES (?, ?, ?, ?)',
             [req.user.id, 'unsave', eventId, JSON.stringify({ action: 'unsaved' })]
         );
+
+        // Send push notification to user
+        sendPushToUser(req.user.id, {
+            title: '💔 Event Removed',
+            body: `"${title}" has been removed from your saved events.`
+        }).catch(err => console.error('Unsaved event push failed:', err));
         
         res.json({ success: true, message: 'Event removed from saved' });
     } catch (error) {
@@ -326,6 +344,12 @@ router.post('/bookings/:eventId', authenticateToken, async (req, res) => {
     const { tickets = 1 } = req.body;
     
     try {
+        const [events] = await pool.execute('SELECT title FROM events WHERE id = ?', [eventId]);
+        if (events.length === 0) {
+            return res.status(404).json({ success: false, error: 'Event not found' });
+        }
+        const title = events[0].title;
+
         // Check if already booked
         const [existing] = await pool.execute(
             'SELECT * FROM event_bookings WHERE user_id = ? AND event_id = ?',
@@ -346,6 +370,12 @@ router.post('/bookings/:eventId', authenticateToken, async (req, res) => {
             'INSERT INTO user_activities (user_id, action_type, event_id, details) VALUES (?, ?, ?, ?)',
             [req.user.id, 'booking', eventId, JSON.stringify({ tickets })]
         );
+
+        // Send push notification to user
+        sendPushToUser(req.user.id, {
+            title: '📅 Booking Confirmed!',
+            body: `You are booked for "${title}" (${tickets} ticket${tickets > 1 ? 's' : ''}). See you there! 🎉`
+        }).catch(err => console.error('Booking push failed:', err));
         
         res.json({ success: true, message: 'Event booked successfully!' });
     } catch (error) {
@@ -375,10 +405,20 @@ router.delete('/bookings/:eventId', authenticateToken, async (req, res) => {
     const eventId = parseInt(req.params.eventId);
     
     try {
+        const [events] = await pool.execute('SELECT title FROM events WHERE id = ?', [eventId]);
+        const title = events[0]?.title || 'Event';
+
         await pool.execute(
             'DELETE FROM event_bookings WHERE user_id = ? AND event_id = ?',
             [req.user.id, eventId]
         );
+
+        // Send push notification to user
+        sendPushToUser(req.user.id, {
+            title: '❌ Booking Cancelled',
+            body: `Your booking for "${title}" has been cancelled.`
+        }).catch(err => console.error('Cancel booking push failed:', err));
+
         res.json({ success: true, message: 'Booking cancelled' });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -414,6 +454,12 @@ router.post('/events', authenticateToken, [
             'INSERT INTO user_activities (user_id, action_type, event_id, details) VALUES (?, ?, ?, ?)',
             [req.user.id, 'create', result.insertId, JSON.stringify({ title, category })]
         );
+
+        // Broadcast notification to all subscribers
+        broadcastPush({
+            title: '🌱 New Event Added!',
+            body: `"${title}" has been created. Check it out! 🚀`
+        }).catch(err => console.error('Broadcast push failed:', err));
         
         res.status(201).json({ success: true, id: result.insertId });
     } catch (error) {
@@ -435,6 +481,8 @@ router.put('/events/:eventId', authenticateToken, async (req, res) => {
             return res.status(404).json({ success: false, error: 'Event not found' });
         }
         
+        const originalTitle = events[0].title;
+
         const updates = [];
         const values = [];
         
@@ -451,6 +499,13 @@ router.put('/events/:eventId', authenticateToken, async (req, res) => {
         
         values.push(eventId);
         await pool.execute(`UPDATE events SET ${updates.join(', ')} WHERE id = ?`, values);
+
+        // Broadcast notification
+        const updatedTitle = req.body.title || originalTitle;
+        broadcastPush({
+            title: '📝 Event Updated',
+            body: `"${updatedTitle}" has been updated.`
+        }).catch(err => console.error('Broadcast push failed:', err));
         
         res.json({ success: true, message: 'Event updated' });
     } catch (error) {
@@ -463,10 +518,20 @@ router.delete('/events/:eventId', authenticateToken, async (req, res) => {
     const eventId = parseInt(req.params.eventId);
     
     try {
+        const [existing] = await pool.execute('SELECT title FROM events WHERE id = ?', [eventId]);
+        const title = existing[0]?.title;
+
         const [result] = await pool.execute('DELETE FROM events WHERE id = ?', [eventId]);
         
         if (result.affectedRows === 0) {
             return res.status(404).json({ success: false, error: 'Event not found' });
+        }
+
+        if (title) {
+            broadcastPush({
+                title: '🗑️ Event Cancelled',
+                body: `"${title}" has been cancelled.`
+            }).catch(err => console.error('Broadcast push failed:', err));
         }
         
         res.json({ success: true, message: 'Event deleted' });
@@ -510,9 +575,21 @@ router.delete('/admin/events/:eventId', authenticateToken, requireAdmin, async (
     const eventId = parseInt(req.params.eventId);
     
     try {
+        // Get title before deleting
+        const [existing] = await pool.execute('SELECT title FROM events WHERE id = ?', [eventId]);
+        const title = existing[0]?.title;
+
         // Delete bookings first (due to foreign key constraint)
         await pool.execute('DELETE FROM event_bookings WHERE event_id = ?', [eventId]);
         await pool.execute('DELETE FROM events WHERE id = ?', [eventId]);
+
+        if (title) {
+            broadcastPush({
+                title: '🗑️ Event Cancelled by Admin',
+                body: `"${title}" has been removed.`
+            }).catch(err => console.error('Broadcast push failed:', err));
+        }
+
         res.json({ success: true, message: 'Event deleted successfully' });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });

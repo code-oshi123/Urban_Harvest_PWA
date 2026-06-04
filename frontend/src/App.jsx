@@ -15,9 +15,25 @@ import LoadingSkeleton from "./components/LoadingSkeleton";
 import { initDB, saveEventsOffline, getEventsOffline, cacheAPIResponse } from "./utils/db";
 import "./App.css";
 
-const API_URL = "https://urban-harvest-pwa-backend.onrender.com/api";
+const API_URL = import.meta.env.VITE_API_URL || 
+  (window.location.hostname === "localhost" 
+    ? "http://localhost:5000/api" 
+    : "https://urban-harvest-pwa-backend.onrender.com/api");
 
-// const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding)
+    .replace(/\-/g, "+")
+    .replace(/_/g, "/");
+
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
 
 function App() {
   // State Management
@@ -352,33 +368,63 @@ function App() {
 
   // ============ NOTIFICATIONS ============
 
+  const subscribeUserToPush = async (registration, trigger = null) => {
+    try {
+      const response = await axios.get(`${API_URL}/notify/vapid-key`);
+      const vapidPublicKey = response.data.publicKey;
+      
+      const convertedVapidKey = urlBase64ToUint8Array(vapidPublicKey);
+      
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: convertedVapidKey
+      });
+      
+      console.log('Push subscription generated:', subscription);
+      
+      const token = localStorage.getItem('token');
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      
+      await axios.post(
+        `${API_URL}/notify/subscribe`,
+        { subscription, trigger },
+        { headers }
+      );
+      
+      return subscription;
+    } catch (error) {
+      console.error('Failed to subscribe user to push:', error);
+      throw error;
+    }
+  };
+
   const requestNotifications = async () => {
-    if ("Notification" in window) {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      showToast("❌ Push notifications are not supported in this browser", "error");
+      return;
+    }
+
+    try {
       const permission = await Notification.requestPermission();
       if (permission === "granted") {
         const registration = await navigator.serviceWorker.ready;
-        registration.showNotification("✨ Notifications Enabled!", {
-          body: "You will now receive updates about new events and reminders",
-          icon: "/icons/android-chrome-192x192.png",
-          badge: "/icons/favicon-32x32.png",
-          vibrate: [200, 100, 200],
-        });
-        showToast(
-          "🔔 Notifications enabled! You'll get event updates.",
-          "success",
-        );
+        await subscribeUserToPush(registration);
+        showToast("🔔 Push notifications enabled successfully!", "success");
       } else {
         showToast(
           "❌ Notifications blocked. You can enable them in browser settings.",
           "warning",
         );
       }
+    } catch (err) {
+      console.error('Failed to enable push notifications:', err);
+      showToast("❌ Error enabling push notifications", "error");
     }
   };
 
   // ============ AUTHENTICATION ============
 
-  const handleLogin = (userData) => {
+  const handleLogin = (userData, isRegister = false) => {
     setUser(userData);
     setShowAuthModal(false);
     showToast(`🎉 Welcome ${userData.name}! You're now logged in.`, "success");
@@ -386,12 +432,34 @@ function App() {
     loadSavedEventsFromDatabase();
     loadUserBookings();
 
+    if ("Notification" in window && Notification.permission === "granted") {
+      navigator.serviceWorker.ready.then((registration) => {
+        subscribeUserToPush(registration, isRegister ? "register" : "login").catch((err) =>
+          console.error("Post-login subscribe failed:", err)
+        );
+      });
+    }
+
     if (window.navigator && window.navigator.vibrate) {
       window.navigator.vibrate([100, 50, 100]);
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if ("serviceWorker" in navigator && "PushManager" in window) {
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.getSubscription();
+        if (subscription) {
+          await axios.post(`${API_URL}/notify/logout-subscription`, {
+            endpoint: subscription.endpoint,
+          });
+        }
+      } catch (err) {
+        console.error("Failed to notify backend on logout:", err);
+      }
+    }
+
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     setUser(null);
@@ -465,6 +533,14 @@ function App() {
       setUser(JSON.parse(savedUser));
       loadSavedEventsFromDatabase();
       loadUserBookings();
+
+      if ("Notification" in window && Notification.permission === "granted") {
+        navigator.serviceWorker.ready.then((registration) => {
+          subscribeUserToPush(registration).catch((err) =>
+            console.error("Silent subscribe refresh failed:", err)
+          );
+        });
+      }
     }
 
     fetchEvents();

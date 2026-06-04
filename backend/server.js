@@ -4,8 +4,36 @@ import dotenv from 'dotenv';
 import eventsRouter from './routes/events.js';
 import { initDB } from './db.js';
 import authRouter from './routes/auth.js';
+import notifyRouter from './routes/notify.js';
+import fs from 'fs';
+import path from 'path';
+import webPush from 'web-push';
 
 dotenv.config();
+
+// Generate VAPID keys if not present
+if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
+    console.log('Generating VAPID keys...');
+    try {
+        const keys = webPush.generateVAPIDKeys();
+        process.env.VAPID_PUBLIC_KEY = keys.publicKey;
+        process.env.VAPID_PRIVATE_KEY = keys.privateKey;
+        
+        const envPath = path.resolve(process.cwd(), '.env');
+        if (fs.existsSync(envPath)) {
+            let envContent = fs.readFileSync(envPath, 'utf8');
+            envContent += `\n# VAPID keys for push notifications\nVAPID_PUBLIC_KEY="${keys.publicKey}"\nVAPID_PRIVATE_KEY="${keys.privateKey}"\n`;
+            fs.writeFileSync(envPath, envContent, 'utf8');
+            console.log('✅ Generated VAPID keys and appended to .env');
+        } else {
+            fs.writeFileSync(envPath, `VAPID_PUBLIC_KEY="${keys.publicKey}"\nVAPID_PRIVATE_KEY="${keys.privateKey}"\n`, 'utf8');
+            console.log('✅ Created .env with generated VAPID keys');
+        }
+    } catch (err) {
+        console.error('Failed to generate VAPID keys automatically:', err.message);
+    }
+}
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -66,12 +94,8 @@ async function startServer() {
     });
 }
 
-// Push notification endpoint
-app.post('/api/notify', async (req, res) => {
-  const { title, body } = req.body;
-  // Store notification in database or send via web-push
-  res.json({ success: true });
-});
+// Push notification routes
+app.use('/api/notify', notifyRouter);
 startServer();
 
 app.get('/', (req, res) => {

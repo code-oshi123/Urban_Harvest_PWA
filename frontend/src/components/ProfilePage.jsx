@@ -108,8 +108,53 @@ export default function ProfilePage({ user, onLogout, API_URL, savedCount, total
         setLanguage(value);
         window.location.reload();
       }
+
+      if (key === 'notifications_enabled') {
+        if (value) {
+          // If enabled, request permission and subscribe
+          if ('Notification' in window && 'serviceWorker' in navigator) {
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+              const registration = await navigator.serviceWorker.ready;
+              // Fetch VAPID public key
+              const response = await axios.get(`${API_URL}/notify/vapid-key`);
+              const vapidPublicKey = response.data.publicKey;
+              
+              // Helper to convert key
+              const padding = '='.repeat((4 - vapidPublicKey.length % 4) % 4);
+              const base64 = (vapidPublicKey + padding).replace(/\-/g, '+').replace(/_/g, '/');
+              const rawData = window.atob(base64);
+              const outputArray = new Uint8Array(rawData.length);
+              for (let i = 0; i < rawData.length; ++i) {
+                outputArray[i] = rawData.charCodeAt(i);
+              }
+
+              const subscription = await registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: outputArray
+              });
+              
+              await axios.post(`${API_URL}/notify/subscribe`, { subscription }, {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+            }
+          }
+        } else {
+          // If disabled, delete subscription from backend and unsubscribe locally
+          if ('serviceWorker' in navigator && 'PushManager' in window) {
+            const registration = await navigator.serviceWorker.ready;
+            const subscription = await registration.pushManager.getSubscription();
+            if (subscription) {
+              await axios.post(`${API_URL}/notify/unsubscribe`, {
+                endpoint: subscription.endpoint
+              });
+              await subscription.unsubscribe();
+            }
+          }
+        }
+      }
     } catch (error) {
-      console.error('Failed to update setting');
+      console.error('Failed to update setting:', error);
     }
   };
 

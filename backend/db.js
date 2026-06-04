@@ -74,6 +74,32 @@ export async function initDB() {
         } else {
             console.log('✅ Events table already exists');
         }
+
+        // Check if push_subscriptions table exists
+        const [psTables] = await connection.execute(`
+            SELECT COUNT(*) as count 
+            FROM information_schema.tables 
+            WHERE table_schema = DATABASE() 
+            AND table_name = 'push_subscriptions'
+        `);
+        
+        if (psTables[0].count === 0) {
+            console.log('Creating push_subscriptions table...');
+            await connection.execute(`
+                CREATE TABLE push_subscriptions (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NULL,
+                    endpoint VARCHAR(500) NOT NULL UNIQUE,
+                    p256dh VARCHAR(255) NOT NULL,
+                    auth VARCHAR(255) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            `);
+            console.log('✅ Push subscriptions table created');
+        } else {
+            console.log('✅ Push subscriptions table already exists');
+        }
     } catch (error) {
         console.error('Database initialization error:', error);
     } finally {

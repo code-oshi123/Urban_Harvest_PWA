@@ -1,6 +1,7 @@
 import express from 'express';
 import { body, param, validationResult } from 'express-validator';
 import pool from '../db.js';
+import { broadcastPush } from './notify.js';
 
 const router = express.Router();
 
@@ -62,6 +63,13 @@ router.post('/', [
       'INSERT INTO events (title, description, category, image_url, date) VALUES (?, ?, ?, ?, ?)',
       [title, description, category, image_url || null, date]
     );
+
+    // Broadcast push notification
+    broadcastPush({
+      title: '🌱 New Event Created!',
+      body: `"${title}" has been scheduled for ${new Date(date).toLocaleDateString()}.`
+    }).catch(err => console.error('Notification broadcast failed:', err));
+
     res.status(201).json({ success: true, id: result.insertId });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -81,6 +89,10 @@ router.put('/:id', [
   }
   
   try {
+    // Get existing title for notification before update
+    const [existing] = await pool.execute('SELECT title FROM events WHERE id = ?', [req.params.id]);
+    const originalTitle = existing[0]?.title || 'Event';
+
     const updates = [];
     const values = [];
     for (const [key, value] of Object.entries(req.body)) {
@@ -96,6 +108,14 @@ router.put('/:id', [
     
     values.push(req.params.id);
     await pool.execute(`UPDATE events SET ${updates.join(', ')} WHERE id = ?`, values);
+
+    // Broadcast update push notification
+    const updatedTitle = req.body.title || originalTitle;
+    broadcastPush({
+      title: '📝 Event Updated',
+      body: `"${updatedTitle}" has been updated. Check out the new details!`
+    }).catch(err => console.error('Notification broadcast failed:', err));
+
     res.json({ success: true, message: 'Event updated' });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -112,10 +132,22 @@ router.delete('/:id', [
   }
   
   try {
+    // Get title before deleting
+    const [existing] = await pool.execute('SELECT title FROM events WHERE id = ?', [req.params.id]);
+    const eventTitle = existing[0]?.title;
+
     const [result] = await pool.execute('DELETE FROM events WHERE id = ?', [req.params.id]);
     if (result.affectedRows === 0) {
       return res.status(404).json({ success: false, error: 'Event not found' });
     }
+
+    if (eventTitle) {
+      broadcastPush({
+        title: '🗑️ Event Cancelled',
+        body: `"${eventTitle}" has been cancelled.`
+      }).catch(err => console.error('Notification broadcast failed:', err));
+    }
+
     res.json({ success: true, message: 'Event deleted' });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
