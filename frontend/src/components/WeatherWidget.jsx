@@ -16,7 +16,6 @@ export default function WeatherWidget({ API_URL }) {
   const defaultLon = 79.8612;
 
   
-
   const fetchWeather = async (lat, lon) => {
     if (!isMountedRef.current) return;
 
