@@ -84,11 +84,32 @@ self.addEventListener('fetch', (event) => {
       })
     );
   }
-  // Static assets - Cache first
+  // Static assets - Cache first, then network fallback with dynamic caching
   else {
     event.respondWith(
-      caches.match(event.request).then((response) => {
-        return response || fetch(event.request);
+      caches.match(event.request).then((cachedResponse) => {
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+        
+        return fetch(event.request).then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const responseClone = networkResponse.clone();
+            // Cache HTTP/HTTPS requests only (e.g. avoid chrome-extension, data urls)
+            if (event.request.url.startsWith('http')) {
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put(event.request, responseClone);
+              });
+            }
+          }
+          return networkResponse;
+        }).catch((err) => {
+          // If HTML navigation, return offline page
+          if (event.request.mode === 'navigate') {
+            return caches.match('/offline.html');
+          }
+          console.error('Fetch failed for static asset:', event.request.url, err);
+        });
       })
     );
   }

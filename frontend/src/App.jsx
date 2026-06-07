@@ -52,6 +52,8 @@ function App() {
   const [toast, setToast] = useState(null);
   const [savedEvents, setSavedEvents] = useState([]);
   const [userBookings, setUserBookings] = useState([]);
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [showInstallBtn, setShowInstallBtn] = useState(false);
 
   // ============ HELPER FUNCTIONS ============
 
@@ -486,6 +488,56 @@ function App() {
 
   // ============ EFFECTS ============
 
+  // PWA Install Prompt Handler
+  useEffect(() => {
+    if (window.deferredPrompt) {
+      setDeferredPrompt(window.deferredPrompt);
+      setShowInstallBtn(true);
+    }
+
+    const handleInstallable = () => {
+      if (window.deferredPrompt) {
+        setDeferredPrompt(window.deferredPrompt);
+        setShowInstallBtn(true);
+      }
+    };
+
+    window.addEventListener("pwa-installable", handleInstallable);
+
+    const handleBeforePrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowInstallBtn(true);
+    };
+    window.addEventListener("beforeinstallprompt", handleBeforePrompt);
+
+    // Hide if already in standalone (installed) mode
+    if (window.matchMedia("(display-mode: standalone)").matches) {
+      setShowInstallBtn(false);
+    }
+
+    return () => {
+      window.removeEventListener("pwa-installable", handleInstallable);
+      window.removeEventListener("beforeinstallprompt", handleBeforePrompt);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) {
+      alert("Installation instructions: Tap the 'Share' button in your browser, then select 'Add to Home Screen' 📲");
+      return;
+    }
+    
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`PWA Installation outcome: ${outcome}`);
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+      setShowInstallBtn(false);
+      showToast("🎉 HarvestHub is now installing!", "success");
+    }
+  };
+
   // Apply theme
   useEffect(() => {
     document.documentElement.setAttribute(
@@ -786,6 +838,11 @@ function App() {
         <div className="top-navbar">
           <h1>🌱 Urban Harvest Hub</h1>
           <div className="nav-actions">
+            {showInstallBtn && (
+              <button className="install-nav-btn" onClick={handleInstallClick} title="Install App">
+                📥 Install Now
+              </button>
+            )}
             <button className="dark-toggle" onClick={toggleTheme}>
               {darkMode ? "☀️" : "🌙"}
             </button>
