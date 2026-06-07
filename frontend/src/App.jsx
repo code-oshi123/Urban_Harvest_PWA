@@ -836,7 +836,10 @@ function App() {
       <div className="main-content">
         {/* Top Navbar */}
         <div className="top-navbar">
-          <h1>🌱 Urban Harvest Hub</h1>
+          <h1>
+            🌱 <span className="mobile-header-title">HarvestHub</span>
+            <span className="mobile-header-title-full">Urban Harvest Hub</span>
+          </h1>
           <div className="nav-actions">
             {showInstallBtn && (
               <button className="install-nav-btn" onClick={handleInstallClick} title="Install App">
@@ -862,37 +865,40 @@ function App() {
         </div>
 
         <div className="container">
-          {/* Weather Widget - Only show on events tab */}
           {activeTab === "events" && <WeatherWidget API_URL={API_URL} />}
 
-          <div className="actions">
-            <button onClick={requestNotifications} className="action-btn">
-              🔔 Enable Notifications
+          {activeTab === "events" && (
+            <div className="utility-actions">
+              <button onClick={requestNotifications} className="action-btn" type="button">
+                🔔 Enable Notifications
+              </button>
+              <button onClick={getLocation} className="action-btn" type="button">
+                📍 Find Events Near Me
+              </button>
+              <button onClick={refreshEvents} className="action-btn refresh-btn" type="button">
+                🔄 Refresh Events
+              </button>
+            </div>
+          )}
+
+          <div className="utility-actions-secondary">
+            <button onClick={refreshEvents} className="action-btn refresh-btn" type="button">
+              🔄 Refresh Events
             </button>
-            <button onClick={getLocation} className="action-btn">
-              📍 Find Events Near Me
+            <button
+              onClick={async () => {
+                indexedDB.deleteDatabase("UrbanHarvestDB");
+                const cacheNames = await caches.keys();
+                await Promise.all(cacheNames.map((name) => caches.delete(name)));
+                window.location.reload();
+              }}
+              className="action-btn"
+              type="button"
+              style={{ background: "#dc3545" }}
+            >
+              🗑️ Clear All Cache & Reload
             </button>
           </div>
-
-          <button onClick={refreshEvents} className="action-btn refresh-btn">
-            🔄 Refresh Events
-          </button>
-
-          <button
-            onClick={async () => {
-              // Clear IndexedDB
-              indexedDB.deleteDatabase("UrbanHarvestDB");
-              // Clear Cache Storage
-              const cacheNames = await caches.keys();
-              await Promise.all(cacheNames.map((name) => caches.delete(name)));
-              // Reload
-              window.location.reload();
-            }}
-            className="action-btn"
-            style={{ background: "#dc3545" }}
-          >
-            🗑️ Clear All Cache & Reload
-          </button>
 
           {isOffline && <OfflineToast />}
           {renderContent()}
