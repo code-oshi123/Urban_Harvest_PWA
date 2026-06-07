@@ -39,7 +39,14 @@ const PORT = process.env.PORT || 5000;
 
 
 app.use(cors({
-    origin: ['http://localhost:5173', 'https://urban-harvest-pwa.vercel.app'],
+    origin: [
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+        'http://[::1]:5173',
+        'https://urban-harvest-pwa.vercel.app',
+        'https://urban-harvst-hub.vercel.app',
+        'https://urban-harvest-hub.vercel.app'
+    ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']

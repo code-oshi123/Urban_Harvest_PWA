@@ -16,7 +16,7 @@ import { initDB, saveEventsOffline, getEventsOffline, cacheAPIResponse } from ".
 import "./App.css";
 
 const API_URL = import.meta.env.VITE_API_URL || 
-  (window.location.hostname === "localhost" 
+  ((window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.hostname === "::1" || window.location.hostname === "[::1]")
     ? "http://localhost:5000/api" 
     : "https://urban-harvest-pwa-backend.onrender.com/api");
 
