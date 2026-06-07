@@ -1,5 +1,5 @@
 import express from 'express';
-import { body, validationResult } from 'express-validator';
+import { body, param, validationResult } from 'express-validator';
 import pool from '../db.js';
 import { hashPassword, verifyPassword, generateToken, authenticateToken } from '../auth.js';
 import { sendPushToUser, broadcastPush } from './notify.js';
@@ -429,11 +429,13 @@ router.delete('/bookings/:eventId', authenticateToken, async (req, res) => {
 
 // Create new event (any logged-in user)
 router.post('/events', authenticateToken, [
-    body('title').trim().isLength({ min: 3, max: 255 }),
-    body('description').trim().isLength({ min: 10 }),
-    body('category').isIn(['workshop', 'event', 'product']),
-    body('date').isISO8601(),
-    body('image_url').optional().isURL()
+    body('title').trim().isLength({ min: 3, max: 255 }).withMessage('Title must be 3-255 chars'),
+    body('description').trim().isLength({ min: 10 }).withMessage('Description min 10 chars'),
+    body('category').isIn(['workshop', 'event', 'product']).withMessage('Invalid category'),
+    body('date').isISO8601().withMessage('Invalid date format'),
+    body('image_url').optional().isURL().withMessage('Invalid image URL'),
+    body('location_lat').optional().isFloat({ min: -90, max: 90 }).withMessage('Invalid latitude'),
+    body('location_lng').optional().isFloat({ min: -180, max: 180 }).withMessage('Invalid longitude')
 ], async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -468,7 +470,21 @@ router.post('/events', authenticateToken, [
 });
 
 // Update user's own event
-router.put('/events/:eventId', authenticateToken, async (req, res) => {
+router.put('/events/:eventId', authenticateToken, [
+    param('eventId').isInt().withMessage('Invalid event ID'),
+    body('title').optional().trim().isLength({ min: 3, max: 255 }).withMessage('Title must be 3-255 chars'),
+    body('description').optional().trim().isLength({ min: 10 }).withMessage('Description min 10 chars'),
+    body('category').optional().isIn(['workshop', 'event', 'product']).withMessage('Invalid category'),
+    body('date').optional().isISO8601().withMessage('Invalid date format'),
+    body('image_url').optional().isURL().withMessage('Invalid image URL'),
+    body('location_lat').optional().isFloat({ min: -90, max: 90 }).withMessage('Invalid latitude'),
+    body('location_lng').optional().isFloat({ min: -180, max: 180 }).withMessage('Invalid longitude')
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({ success: false, errors: errors.array() });
+    }
+    
     const eventId = parseInt(req.params.eventId);
     
     try {
@@ -514,7 +530,14 @@ router.put('/events/:eventId', authenticateToken, async (req, res) => {
 });
 
 // Delete event (user's own event)
-router.delete('/events/:eventId', authenticateToken, async (req, res) => {
+router.delete('/events/:eventId', authenticateToken, [
+    param('eventId').isInt().withMessage('Invalid event ID')
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({ success: false, errors: errors.array() });
+    }
+    
     const eventId = parseInt(req.params.eventId);
     
     try {

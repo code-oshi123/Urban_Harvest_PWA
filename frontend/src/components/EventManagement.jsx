@@ -1,20 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import './EventManagement.css';
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+import "./EventManagement.css";
 
-export default function EventManagement({ events, onEventUpdate, API_URL, user }) {
+export default function EventManagement({
+  events,
+  onEventUpdate,
+  API_URL,
+  user,
+}) {
   const [showForm, setShowForm] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
   const [allEvents, setAllEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    category: 'workshop',
-    date: '',
-    image_url: '',
-    location_lat: '',
-    location_lng: ''
+    title: "",
+    description: "",
+    category: "workshop",
+    date: "",
+    image_url: "",
+    location_lat: "",
+    location_lng: "",
   });
 
   // Load all events for admin
@@ -23,7 +28,7 @@ export default function EventManagement({ events, onEventUpdate, API_URL, user }
   }, []);
 
   const loadAdminEvents = async () => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem("token");
     if (!token) {
       setLoading(false);
       return;
@@ -31,11 +36,11 @@ export default function EventManagement({ events, onEventUpdate, API_URL, user }
 
     try {
       const res = await axios.get(`${API_URL}/auth/admin/events`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
       });
       setAllEvents(res.data.events || []);
     } catch (error) {
-      console.error('Failed to load admin events:', error);
+      console.error("Failed to load admin events:", error);
       // Fallback to regular events
       setAllEvents(events || []);
     } finally {
@@ -49,52 +54,67 @@ export default function EventManagement({ events, onEventUpdate, API_URL, user }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem("token");
     if (!token) {
-      alert('Please login first');
+      alert("Please login first");
       return;
     }
 
     try {
+      // Convert date to ISO8601 format for backend
+      const dataToSend = {
+        ...formData,
+        date: formData.date ? new Date(formData.date).toISOString() : null,
+        location_lat: formData.location_lat
+          ? parseFloat(formData.location_lat)
+          : null,
+        location_lng: formData.location_lng
+          ? parseFloat(formData.location_lng)
+          : null,
+      };
+
       if (editingEvent) {
         await axios.put(
           `${API_URL}/auth/events/${editingEvent.id}`,
-          formData,
-          { headers: { Authorization: `Bearer ${token}` } }
+          dataToSend,
+          { headers: { Authorization: `Bearer ${token}` } },
         );
-        alert('✅ Event updated successfully!');
+        alert("✅ Event updated successfully!");
       } else {
-        await axios.post(
-          `${API_URL}/auth/events`,
-          formData,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        alert('✅ Event created successfully!');
+        await axios.post(`${API_URL}/auth/events`, dataToSend, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        alert("✅ Event created successfully!");
       }
-      
+
       resetForm();
       loadAdminEvents();
       if (onEventUpdate) onEventUpdate();
     } catch (error) {
-      alert(error.response?.data?.error || 'Operation failed');
+      alert(error.response?.data?.error || "Operation failed");
     }
   };
 
   const handleDelete = async (eventId) => {
-    if (!window.confirm('⚠️ Are you sure you want to delete this event? This action cannot be undone.')) return;
-    
-    const token = localStorage.getItem('token');
+    if (
+      !window.confirm(
+        "⚠️ Are you sure you want to delete this event? This action cannot be undone.",
+      )
+    )
+      return;
+
+    const token = localStorage.getItem("token");
     if (!token) return;
 
     try {
       await axios.delete(`${API_URL}/auth/admin/events/${eventId}`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
       });
-      alert('🗑️ Event deleted successfully!');
+      alert("🗑️ Event deleted successfully!");
       loadAdminEvents();
       if (onEventUpdate) onEventUpdate();
     } catch (error) {
-      alert('Failed to delete event');
+      alert("Failed to delete event");
     }
   };
 
@@ -104,10 +124,10 @@ export default function EventManagement({ events, onEventUpdate, API_URL, user }
       title: event.title,
       description: event.description,
       category: event.category,
-      date: event.date?.split('T')[0] || '',
-      image_url: event.image_url || '',
-      location_lat: event.location_lat || '',
-      location_lng: event.location_lng || ''
+      date: event.date?.split("T")[0] || "",
+      image_url: event.image_url || "",
+      location_lat: event.location_lat || "",
+      location_lng: event.location_lng || "",
     });
     setShowForm(true);
   };
@@ -116,13 +136,13 @@ export default function EventManagement({ events, onEventUpdate, API_URL, user }
     setShowForm(false);
     setEditingEvent(null);
     setFormData({
-      title: '',
-      description: '',
-      category: 'workshop',
-      date: '',
-      image_url: '',
-      location_lat: '',
-      location_lng: ''
+      title: "",
+      description: "",
+      category: "workshop",
+      date: "",
+      image_url: "",
+      location_lat: "",
+      location_lng: "",
     });
   };
 
@@ -147,10 +167,12 @@ export default function EventManagement({ events, onEventUpdate, API_URL, user }
         <div className="event-form-modal">
           <div className="event-form-container">
             <div className="form-header">
-              <h3>{editingEvent ? 'Edit Event' : 'Create New Event'}</h3>
-              <button className="close-btn" onClick={resetForm}>✕</button>
+              <h3>{editingEvent ? "Edit Event" : "Create New Event"}</h3>
+              <button className="close-btn" onClick={resetForm}>
+                ✕
+              </button>
             </div>
-            
+
             <form onSubmit={handleSubmit} className="event-form">
               <div className="form-group">
                 <label>Event Title *</label>
@@ -179,7 +201,11 @@ export default function EventManagement({ events, onEventUpdate, API_URL, user }
               <div className="form-row">
                 <div className="form-group">
                   <label>Category *</label>
-                  <select name="category" value={formData.category} onChange={handleInputChange}>
+                  <select
+                    name="category"
+                    value={formData.category}
+                    onChange={handleInputChange}
+                  >
                     <option value="workshop">🔧 Workshop</option>
                     <option value="event">🎪 Event</option>
                     <option value="product">🌿 Product</option>
@@ -236,9 +262,15 @@ export default function EventManagement({ events, onEventUpdate, API_URL, user }
               </div>
 
               <div className="form-actions">
-                <button type="button" className="cancel-btn" onClick={resetForm}>Cancel</button>
+                <button
+                  type="button"
+                  className="cancel-btn"
+                  onClick={resetForm}
+                >
+                  Cancel
+                </button>
                 <button type="submit" className="submit-btn">
-                  {editingEvent ? 'Update Event' : 'Create Event'}
+                  {editingEvent ? "Update Event" : "Create Event"}
                 </button>
               </div>
             </form>
@@ -256,26 +288,44 @@ export default function EventManagement({ events, onEventUpdate, API_URL, user }
           </div>
         ) : (
           <div className="management-grid">
-            {allEvents.map(event => (
+            {allEvents.map((event) => (
               <div key={event.id} className="management-card">
-                <img 
-                  src={event.image_url || 'https://images.unsplash.com/photo-1466692476868-aef1dfb1e735?w=200'} 
+                <img
+                  src={
+                    event.image_url ||
+                    "https://images.unsplash.com/photo-1466692476868-aef1dfb1e735?w=200"
+                  }
                   alt={event.title}
                   onError={(e) => {
-                    e.target.src = 'https://images.unsplash.com/photo-1466692476868-aef1dfb1e735?w=200';
+                    e.target.src =
+                      "https://images.unsplash.com/photo-1466692476868-aef1dfb1e735?w=200";
                   }}
                 />
                 <div className="management-card-content">
                   <h4>{event.title}</h4>
                   <p className="event-category">{event.category}</p>
-                  <p className="event-date">📅 {new Date(event.date).toLocaleDateString()}</p>
+                  <p className="event-date">
+                    📅 {new Date(event.date).toLocaleDateString()}
+                  </p>
                   {event.booking_count > 0 && (
-                    <p className="event-bookings">📊 {event.booking_count} bookings</p>
+                    <p className="event-bookings">
+                      📊 {event.booking_count} bookings
+                    </p>
                   )}
                 </div>
                 <div className="management-card-actions">
-                  <button className="edit-btn" onClick={() => handleEdit(event)}>✏️ Edit</button>
-                  <button className="delete-btn" onClick={() => handleDelete(event.id)}>🗑️ Delete</button>
+                  <button
+                    className="edit-btn"
+                    onClick={() => handleEdit(event)}
+                  >
+                    ✏️ Edit
+                  </button>
+                  <button
+                    className="delete-btn"
+                    onClick={() => handleDelete(event.id)}
+                  >
+                    🗑️ Delete
+                  </button>
                 </div>
               </div>
             ))}

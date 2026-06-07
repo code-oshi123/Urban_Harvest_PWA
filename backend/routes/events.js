@@ -50,7 +50,9 @@ router.post('/', [
   body('description').trim().isLength({ min: 10 }).withMessage('Description min 10 chars'),
   body('category').isIn(['workshop', 'event', 'product']).withMessage('Invalid category'),
   body('image_url').optional().isURL().withMessage('Invalid image URL'),
-  body('date').isISO8601().withMessage('Invalid date format')
+  body('date').isISO8601().withMessage('Invalid date format'),
+  body('location_lat').optional().isFloat({ min: -90, max: 90 }).withMessage('Invalid latitude'),
+  body('location_lng').optional().isFloat({ min: -180, max: 180 }).withMessage('Invalid longitude')
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -58,10 +60,10 @@ router.post('/', [
   }
   
   try {
-    const { title, description, category, image_url, date } = req.body;
+    const { title, description, category, image_url, date, location_lat, location_lng } = req.body;
     const [result] = await pool.execute(
-      'INSERT INTO events (title, description, category, image_url, date) VALUES (?, ?, ?, ?, ?)',
-      [title, description, category, image_url || null, date]
+      'INSERT INTO events (title, description, category, image_url, date, location_lat, location_lng) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [title, description, category, image_url || null, date, location_lat || null, location_lng || null]
     );
 
     // Broadcast push notification
@@ -78,10 +80,14 @@ router.post('/', [
 
 // PUT update event (UPDATE)
 router.put('/:id', [
-  param('id').isInt(),
-  body('title').optional().trim().isLength({ min: 3, max: 255 }),
-  body('description').optional().trim().isLength({ min: 10 }),
-  body('category').optional().isIn(['workshop', 'event', 'product'])
+  param('id').isInt().withMessage('Invalid event ID'),
+  body('title').optional().trim().isLength({ min: 3, max: 255 }).withMessage('Title must be 3-255 chars'),
+  body('description').optional().trim().isLength({ min: 10 }).withMessage('Description min 10 chars'),
+  body('category').optional().isIn(['workshop', 'event', 'product']).withMessage('Invalid category'),
+  body('date').optional().isISO8601().withMessage('Invalid date format'),
+  body('image_url').optional().isURL().withMessage('Invalid image URL'),
+  body('location_lat').optional().isFloat({ min: -90, max: 90 }).withMessage('Invalid latitude'),
+  body('location_lng').optional().isFloat({ min: -180, max: 180 }).withMessage('Invalid longitude')
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -124,7 +130,7 @@ router.put('/:id', [
 
 // DELETE event (DELETE)
 router.delete('/:id', [
-  param('id').isInt()
+  param('id').isInt().withMessage('Invalid event ID')
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
