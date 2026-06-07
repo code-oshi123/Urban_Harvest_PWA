@@ -49,10 +49,17 @@ router.post('/', [
   body('title').trim().isLength({ min: 3, max: 255 }).withMessage('Title must be 3-255 chars'),
   body('description').trim().isLength({ min: 10 }).withMessage('Description min 10 chars'),
   body('category').isIn(['workshop', 'event', 'product']).withMessage('Invalid category'),
-  body('image_url').optional().isURL().withMessage('Invalid image URL'),
-  body('date').isISO8601().withMessage('Invalid date format'),
-  body('location_lat').optional().isFloat({ min: -90, max: 90 }).withMessage('Invalid latitude'),
-  body('location_lng').optional().isFloat({ min: -180, max: 180 }).withMessage('Invalid longitude')
+  body('image_url').optional({ values: 'falsy' }).isURL().withMessage('Invalid image URL'),
+  body('date').custom((value) => {
+    // Accept both YYYY-MM-DD and ISO8601 formats
+    const dateRegex = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}.*)?$/;
+    if (!dateRegex.test(value)) {
+      throw new Error('Invalid date format');
+    }
+    return true;
+  }),
+  body('location_lat').optional({ values: 'falsy' }).isFloat({ min: -90, max: 90 }).withMessage('Invalid latitude'),
+  body('location_lng').optional({ values: 'falsy' }).isFloat({ min: -180, max: 180 }).withMessage('Invalid longitude')
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -84,10 +91,17 @@ router.put('/:id', [
   body('title').optional().trim().isLength({ min: 3, max: 255 }).withMessage('Title must be 3-255 chars'),
   body('description').optional().trim().isLength({ min: 10 }).withMessage('Description min 10 chars'),
   body('category').optional().isIn(['workshop', 'event', 'product']).withMessage('Invalid category'),
-  body('date').optional().isISO8601().withMessage('Invalid date format'),
-  body('image_url').optional().isURL().withMessage('Invalid image URL'),
-  body('location_lat').optional().isFloat({ min: -90, max: 90 }).withMessage('Invalid latitude'),
-  body('location_lng').optional().isFloat({ min: -180, max: 180 }).withMessage('Invalid longitude')
+  body('date').optional().custom((value) => {
+    if (!value) return true;
+    const dateRegex = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}.*)?$/;
+    if (!dateRegex.test(value)) {
+      throw new Error('Invalid date format');
+    }
+    return true;
+  }),
+  body('image_url').optional({ values: 'falsy' }).isURL().withMessage('Invalid image URL'),
+  body('location_lat').optional({ values: 'falsy' }).isFloat({ min: -90, max: 90 }).withMessage('Invalid latitude'),
+  body('location_lng').optional({ values: 'falsy' }).isFloat({ min: -180, max: 180 }).withMessage('Invalid longitude')
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {

@@ -41,8 +41,12 @@ export default function EventManagement({
       setAllEvents(res.data.events || []);
     } catch (error) {
       console.error("Failed to load admin events:", error);
-      // Fallback to regular events
-      setAllEvents(events || []);
+      try {
+        const res = await axios.get(`${API_URL}/events`);
+        setAllEvents(res.data.data || []);
+      } catch {
+        setAllEvents(events || []);
+      }
     } finally {
       setLoading(false);
     }
@@ -51,6 +55,22 @@ export default function EventManagement({
   const handleInputChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
+
+  const buildEventPayload = () => ({
+    title: formData.title.trim(),
+    description: formData.description.trim(),
+    category: formData.category,
+    date: formData.date || null,
+    image_url: formData.image_url?.trim() || null,
+    location_lat:
+      formData.location_lat !== "" && formData.location_lat != null
+        ? parseFloat(formData.location_lat)
+        : null,
+    location_lng:
+      formData.location_lng !== "" && formData.location_lng != null
+        ? parseFloat(formData.location_lng)
+        : null,
+  });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -61,29 +81,21 @@ export default function EventManagement({
     }
 
     try {
-      // Convert date to ISO8601 format for backend
-      const dataToSend = {
-        ...formData,
-        date: formData.date ? new Date(formData.date).toISOString() : null,
-        location_lat: formData.location_lat
-          ? parseFloat(formData.location_lat)
-          : null,
-        location_lng: formData.location_lng
-          ? parseFloat(formData.location_lng)
-          : null,
-      };
+      const dataToSend = buildEventPayload();
 
       if (editingEvent) {
         await axios.put(
           `${API_URL}/auth/events/${editingEvent.id}`,
           dataToSend,
-          { headers: { Authorization: `Bearer ${token}` } },
+          { headers: { Authorization: `Bearer ${token}` } }
         );
         alert("✅ Event updated successfully!");
       } else {
-        await axios.post(`${API_URL}/auth/events`, dataToSend, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        await axios.post(
+          `${API_URL}/auth/events`,
+          dataToSend,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
         alert("✅ Event created successfully!");
       }
 
@@ -91,7 +103,12 @@ export default function EventManagement({
       loadAdminEvents();
       if (onEventUpdate) onEventUpdate();
     } catch (error) {
-      alert(error.response?.data?.error || "Operation failed");
+      console.error("Event submission error:", error.response?.data || error.message);
+      const errorMessage =
+        error.response?.data?.error ||
+        error.response?.data?.errors?.[0]?.msg ||
+        "Operation failed";
+      alert(errorMessage);
     }
   };
 
