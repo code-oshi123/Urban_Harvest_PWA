@@ -77,20 +77,17 @@ function App() {
     return R * c;
   };
 
-  // Clear all cached data
-  const clearCache = async () => {
-    if (window.confirm("Clear cached events and refresh data?")) {
-      // Clear IndexedDB
-      const request = indexedDB.deleteDatabase("UrbanHarvestDB");
-      request.onsuccess = () => {
-        console.log("Cache cleared successfully");
-        showToast("Cache cleared! Refreshing data...", "success");
-        fetchEvents(true);
-      };
-      request.onerror = () => {
-        console.log("Failed to clear cache");
-        showToast("Failed to clear cache", "error");
-      };
+  const clearAllCacheAndReload = async () => {
+    if (!window.confirm("Clear all cached data and reload the app?")) return;
+
+    try {
+      indexedDB.deleteDatabase("UrbanHarvestDB");
+      const cacheNames = await caches.keys();
+      await Promise.all(cacheNames.map((name) => caches.delete(name)));
+      showToast("Cache cleared! Reloading…", "success");
+      window.location.reload();
+    } catch {
+      showToast("Failed to clear cache", "error");
     }
   };
 
@@ -770,6 +767,10 @@ function App() {
             onUpdate={handleProfileUpdate}
             darkMode={darkMode}
             setDarkMode={setDarkMode}
+            onRequestNotifications={requestNotifications}
+            onFindNearby={getLocation}
+            onRefreshEvents={refreshEvents}
+            onClearCache={clearAllCacheAndReload}
           />
         );
 
@@ -866,39 +867,6 @@ function App() {
 
         <div className="container">
           {activeTab === "events" && <WeatherWidget API_URL={API_URL} />}
-
-          {activeTab === "events" && (
-            <div className="utility-actions">
-              <button onClick={requestNotifications} className="action-btn" type="button">
-                🔔 Enable Notifications
-              </button>
-              <button onClick={getLocation} className="action-btn" type="button">
-                📍 Find Events Near Me
-              </button>
-              <button onClick={refreshEvents} className="action-btn refresh-btn" type="button">
-                🔄 Refresh Events
-              </button>
-            </div>
-          )}
-
-          <div className="utility-actions-secondary">
-            <button onClick={refreshEvents} className="action-btn refresh-btn" type="button">
-              🔄 Refresh Events
-            </button>
-            <button
-              onClick={async () => {
-                indexedDB.deleteDatabase("UrbanHarvestDB");
-                const cacheNames = await caches.keys();
-                await Promise.all(cacheNames.map((name) => caches.delete(name)));
-                window.location.reload();
-              }}
-              className="action-btn"
-              type="button"
-              style={{ background: "#dc3545" }}
-            >
-              🗑️ Clear All Cache & Reload
-            </button>
-          </div>
 
           {isOffline && <OfflineToast />}
           {renderContent()}

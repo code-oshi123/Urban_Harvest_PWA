@@ -182,20 +182,6 @@ body {
   display: inline;
 }
 
-.utility-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.utility-actions-secondary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
 /* ========================================
    CONTAINER & LAYOUT
    ======================================== */
@@ -580,20 +566,6 @@ body {
   .event-grid {
     grid-template-columns: 1fr;
     gap: 16px;
-  }
-  
-  .utility-actions {
-    flex-direction: column;
-    margin-bottom: 12px;
-  }
-
-  .utility-actions-secondary {
-    display: none;
-  }
-
-  .utility-actions .action-btn {
-    width: 100%;
-    justify-content: center;
   }
   
   .search-filter {

@@ -3,7 +3,20 @@ import axios from 'axios';
 import './ProfilePage.css';
 import { setLanguage } from '../utils/i18n';
 
-export default function ProfilePage({ user, onLogout, API_URL, savedCount, totalEvents, onUpdate, darkMode, setDarkMode }) {
+export default function ProfilePage({
+  user,
+  onLogout,
+  API_URL,
+  savedCount,
+  totalEvents,
+  onUpdate,
+  darkMode,
+  setDarkMode,
+  onRequestNotifications,
+  onFindNearby,
+  onRefreshEvents,
+  onClearCache,
+}) {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
     name: user?.name || '',
@@ -214,6 +227,57 @@ export default function ProfilePage({ user, onLogout, API_URL, savedCount, total
         <div className="stat-card">
           <div className="stat-value">{activities.length}</div>
           <div className="stat-label">Activities</div>
+        </div>
+      </div>
+
+      <div className="profile-section quick-actions-section">
+        <h3>⚡ Quick Actions</h3>
+        <p className="section-subtitle">Tools to personalize your HarvestHub experience</p>
+        <div className="quick-actions-grid">
+          <button
+            type="button"
+            className="quick-action-card quick-action-notify"
+            onClick={() => onRequestNotifications?.()}
+          >
+            <span className="quick-action-icon">🔔</span>
+            <span className="quick-action-text">
+              <strong>Notifications</strong>
+              <small>Get alerts for new events</small>
+            </span>
+          </button>
+          <button
+            type="button"
+            className="quick-action-card quick-action-nearby"
+            onClick={() => onFindNearby?.()}
+          >
+            <span className="quick-action-icon">📍</span>
+            <span className="quick-action-text">
+              <strong>Events Near Me</strong>
+              <small>Find workshops close to you</small>
+            </span>
+          </button>
+          <button
+            type="button"
+            className="quick-action-card quick-action-refresh"
+            onClick={() => onRefreshEvents?.()}
+          >
+            <span className="quick-action-icon">🔄</span>
+            <span className="quick-action-text">
+              <strong>Refresh Events</strong>
+              <small>Load the latest from server</small>
+            </span>
+          </button>
+          <button
+            type="button"
+            className="quick-action-card quick-action-cache"
+            onClick={() => onClearCache?.()}
+          >
+            <span className="quick-action-icon">🗑️</span>
+            <span className="quick-action-text">
+              <strong>Clear Cache</strong>
+              <small>Reset offline data & reload</small>
+            </span>
+          </button>
         </div>
       </div>
 
